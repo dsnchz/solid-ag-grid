@@ -1,11 +1,18 @@
 import type { JSX } from "@solidjs/web";
-import type { CellCtrl, CellStyle, ICellComp } from "ag-grid-community";
+import type {
+  CellCtrl,
+  CellStyle,
+  Component as AgComponent,
+  ICellComp,
+  RowDragComp,
+} from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
-import { CssClassManager } from "ag-stack";
+import { _removeFromParent, CssClassManager } from "ag-stack";
 import {
   createEffect,
   createMemo,
   createSignal,
+  Loading,
   onCleanup,
   Show,
   untrack,
@@ -13,7 +20,9 @@ import {
 } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
+import { createJsCellRenderer } from "./createJsCellRenderer";
 import type { RenderDetails } from "./interfaces";
+import { SkeletonCellRenderer } from "./skeletonCellComp";
 
 let editorsNotSupportedWarned = false;
 const warnEditorsNotSupported = () => {
@@ -33,6 +42,13 @@ interface CellCompProps {
 interface FrameworkRendererInfo {
   Comp: any;
   key: number;
+}
+
+/** getGui() elements of the live tool widget beans, inserted as derived JSX ahead of the value. */
+interface ToolWidgetElements {
+  rowDrag?: HTMLElement;
+  dnd?: HTMLElement;
+  selection?: HTMLElement;
 }
 
 const CellComp = (props: CellCompProps) => {
@@ -60,7 +76,6 @@ const CellComp = (props: CellCompProps) => {
 
   const [userStyles, setUserStyles] = createSignal<CellStyle>();
 
-  // T3.5 renders the actual tool widgets; the signals exist now so the wrapper branch is real
   const [includeSelection, setIncludeSelection] = createSignal<boolean>(false);
   const [includeRowDrag, setIncludeRowDrag] = createSignal<boolean>(false);
   const [includeDndSource, setIncludeDndSource] = createSignal<boolean>(false);
@@ -75,6 +90,8 @@ const CellComp = (props: CellCompProps) => {
   let eCellWrapper: HTMLDivElement | undefined;
   let eCellValue: HTMLElement | undefined;
   let cellRendererRef: any = null;
+  let rowResizerElement: HTMLElement | null = null;
+  let rowDragComp: RowDragComp | undefined;
 
   const cssManager = new CssClassManager(() => eGui);
 
@@ -83,6 +100,17 @@ const CellComp = (props: CellCompProps) => {
     () => renderDetails() != null && (includeSelection() || includeDndSource() || includeRowDrag()),
   );
   const showCellWrapper = createMemo(() => forceWrapper || showTools());
+
+  // T3.8: becomes `editDetails() != null && !editDetails()!.popup` once editors exist
+  const suppressJsRenderer = () => false;
+
+  // JS (non-framework) renderer instance lifecycle; its gui inserts as derived JSX in the
+  // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed
+  const jsRenderer = createJsCellRenderer({
+    context,
+    renderDetails,
+    suppress: suppressJsRenderer,
+  });
 
   // ctrl.setComp needs the root cell element plus (when present) the spanned wrapper and the
   // ag-cell-wrapper, whose refs are applied parent-before-children — guarded setup fires once
@@ -109,13 +137,21 @@ const CellComp = (props: CellCompProps) => {
       setIncludeSelection: (include) => setIncludeSelection(include),
       setIncludeRowDrag: (include) => setIncludeRowDrag(include),
       setIncludeDndSource: (include) => setIncludeDndSource(include),
-      // T3.5: row resizer element handling
-      setRowResizerElement: () => {},
+      // the row resizer element is created and owned by the ctrl (rowResizeFeature); the comp
+      // only parents it — plain imperative DOM work, off the reactive graph like React
+      setRowResizerElement: (element) => {
+        if (rowResizerElement) {
+          _removeFromParent(rowResizerElement);
+        }
+        rowResizerElement = element;
+        if (element && eGui) {
+          eGui.appendChild(element);
+        }
+      },
 
       // T3.8: editors
       getCellEditor: () => null,
-      // T3.5 adds the JS renderer instance fallback
-      getCellRenderer: () => cellRendererRef ?? null,
+      getCellRenderer: () => cellRendererRef ?? jsRenderer.instance() ?? null,
       getParentOfValue: () => eCellValue ?? eCellWrapper ?? eGui ?? null,
 
       setRenderDetails: (compDetails, value, force) => {
@@ -136,8 +172,13 @@ const CellComp = (props: CellCompProps) => {
         if (compDetails?.params?.deferRender && !cellCtrl.rowNode.group) {
           const { loadingComp, onReady } = cellCtrl.getDeferLoadingCellRenderer();
           if (loadingComp) {
-            // simplified defer branch (no startTransition equivalent in Solid 2.0 — see
-            // ARCHITECTURE.md Open question 3): show the loading comp, swap when ready
+            // DEFER-RENDER VERDICT (ARCHITECTURE.md Open question 3, resolved T3.5): shipped
+            // WITHOUT a startTransition equivalent (removed in Solid 2.0) — show the loading
+            // comp, swap with a plain write when onReady resolves (bodyScrollEnd while
+            // scrolling; immediately otherwise). Browser test "defer render" scrolls a grid
+            // of deferRender cells with zero console errors and correct final content; the
+            // swap is one microtask batch, so there is no interleaved frame. Revisit only if
+            // profiling real apps shows scroll jank from heavy renderers.
             setRenderDetails({ value: undefined, compDetails: loadingComp, force: false });
             onReady.then(() => setDetails());
             return;
@@ -193,7 +234,7 @@ const CellComp = (props: CellCompProps) => {
         return;
       }
 
-      // T3.5: rowDragComp.refreshVisibility()
+      rowDragComp?.refreshVisibility();
 
       // if different Cell Renderer, then do nothing, as renderer will be recreated
       if (oldCompDetails.componentClass != newCompDetails.componentClass) {
@@ -231,6 +272,62 @@ const CellComp = (props: CellCompProps) => {
     },
   );
 
+  // Tool widgets (row drag / dnd source / selection checkbox) are JS component beans. React
+  // creates them in the cell-wrapper ref callback and inserts 'afterbegin' (final DOM order:
+  // rowDrag, dnd, selection, value) — Solid refs don't re-run on signal changes, so the
+  // instance lifecycle lives here and the getGui() elements insert as derived JSX ahead of the
+  // value span in that same order (§5.1: derived JSX insertion beats effect-appendChild).
+  // Effect classification: signal-keyed lifecycle of non-Solid instances.
+  // internal bridge signal: the cleanup below also runs at disposal (owned scope, where
+  // writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
+  const [toolWidgets, setToolWidgets] = createSignal<ToolWidgetElements | undefined>(undefined, {
+    ownedWrite: true,
+  });
+  createEffect(
+    () => ({
+      show: showCellWrapper(),
+      selection: includeSelection(),
+      dnd: includeDndSource(),
+      rowDrag: includeRowDrag(),
+    }),
+    (include) => {
+      if (!include.show || !cellCtrl.isAlive() || context.isDestroyed()) {
+        return;
+      }
+
+      const comps: AgComponent[] = [];
+      const widgets: ToolWidgetElements = {};
+      const addComp = (slot: keyof ToolWidgetElements, comp: AgComponent | undefined) => {
+        if (comp) {
+          comps.push(comp);
+          widgets[slot] = comp.getGui();
+        }
+      };
+
+      if (include.selection) {
+        addComp("selection", cellCtrl.createSelectionCheckbox());
+      }
+      if (include.dnd) {
+        addComp("dnd", cellCtrl.createDndSource());
+      }
+      if (include.rowDrag) {
+        rowDragComp = cellCtrl.createRowDragComp();
+        addComp("rowDrag", rowDragComp);
+        rowDragComp?.refreshVisibility();
+      }
+      setToolWidgets(widgets);
+
+      return () => {
+        setToolWidgets(undefined);
+        rowDragComp = undefined;
+        for (const comp of comps) {
+          // Solid removes the inserted elements when the signal clears / the wrapper unmounts
+          context.destroyBean(comp);
+        }
+      };
+    },
+  );
+
   // remount the framework renderer ONLY when the component class or renderKey changes; param
   // updates flow reactively through the spread (Solid analog of React's key + prop propagation)
   const frameworkRendererInfo = createMemo<FrameworkRendererInfo | undefined>(
@@ -259,15 +356,27 @@ const CellComp = (props: CellCompProps) => {
     return value?.toString?.() ?? value;
   };
 
+  // ASYNC-RENDERER VERDICT (ARCHITECTURE.md Open question 4, resolved T3.5): <Loading> around
+  // the framework renderer WORKS — a user renderer reading an async computation (e.g.
+  // `createMemo(() => fetch(...))`) suspends into the per-cell boundary, which shows the
+  // grid's loading cell renderer (SkeletonCellRenderer → colDef.loadingCellRenderer /
+  // agSkeletonCellRenderer) and reveals the real content when the read settles. Zero-ceremony
+  // async cell renderers are therefore supported natively (headline feature). Evidence:
+  // browser test "async framework cell renderer" in cellsComplete.browser.test.tsx.
   const valueOrCellCompJsx = () => (
     <>
       <Show when={rawValueMode()}>{rawValue()}</Show>
       <Show when={frameworkRendererInfo()} keyed>
         {(info) => (
-          <info.Comp {...rendererParams()} ref={(instance: any) => (cellRendererRef = instance)} />
+          <Loading fallback={<SkeletonCellRenderer cellCtrl={cellCtrl} />}>
+            <info.Comp
+              {...rendererParams()}
+              ref={(instance: any) => (cellRendererRef = instance)}
+            />
+          </Loading>
         )}
       </Show>
-      {/* T3.5: JS cell renderers are mounted imperatively (showJsRenderer) */}
+      {jsRenderer.gui()}
     </>
   );
 
@@ -277,25 +386,41 @@ const CellComp = (props: CellCompProps) => {
       when={showCellWrapper()}
       fallback={<Show when={renderDetails()}>{valueOrCellCompJsx()}</Show>}
     >
-      <div
-        class="ag-cell-wrapper"
-        role="presentation"
-        ref={(el) => {
-          eCellWrapper = el;
-          init();
-        }}
-      >
-        <Show when={renderDetails()}>
-          <span
+      {(_wrapper) => {
+        // getParentOfValue must stop returning the wrapper once it unmounts (React nulls the
+        // ref on unmount; Solid refs don't re-run) — Show function children give a scope to
+        // register the branch cleanup in
+        onCleanup(() => (eCellWrapper = undefined));
+        return (
+          <div
+            class="ag-cell-wrapper"
             role="presentation"
-            id={`cell-${instanceId}`}
-            class={cellValueClass}
-            ref={(el) => (eCellValue = el)}
+            ref={(el) => {
+              eCellWrapper = el;
+              init();
+            }}
           >
-            {valueOrCellCompJsx()}
-          </span>
-        </Show>
-      </div>
+            {toolWidgets()?.rowDrag}
+            {toolWidgets()?.dnd}
+            {toolWidgets()?.selection}
+            <Show when={renderDetails()}>
+              {(_details) => {
+                onCleanup(() => (eCellValue = undefined));
+                return (
+                  <span
+                    role="presentation"
+                    id={`cell-${instanceId}`}
+                    class={cellValueClass}
+                    ref={(el) => (eCellValue = el)}
+                  >
+                    {valueOrCellCompJsx()}
+                  </span>
+                );
+              }}
+            </Show>
+          </div>
+        );
+      }}
     </Show>
   );
 
