@@ -18,6 +18,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
+      # advisory while solid-checker (v0.2.x) and ecosystem reactivity contracts mature
+      - run: pnpm check:solid || echo "::warning::solid-checker reported findings (advisory)"
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm exec playwright install chromium --with-deps

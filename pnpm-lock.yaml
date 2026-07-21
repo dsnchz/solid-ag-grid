@@ -57,6 +57,9 @@ importers:
       playwright:
         specifier: ^1.61.1
         version: 1.61.1
+      solid-checker:
+        specifier: 0.2.2
+        version: 0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
       solid-js:
         specifier: 2.0.0-beta.21
         version: 2.0.0-beta.21
@@ -586,6 +589,31 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@solid-checker/binding-darwin-arm64@0.2.2':
+    resolution: {integrity: sha512-/vwETY8N1QDn9DVuEu8OmPtY11J0RGTD5PW6iH4XBuhHMZ/cKQXpVNwC1AxK+gEKU7frbqj3uPQ8dTlL9Ogi1w==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@solid-checker/binding-darwin-x64@0.2.2':
+    resolution: {integrity: sha512-1RjGFs8lExYkc0ZYSfAO/F2CV03FT3H0auDOzJVtdbwaZxtaHqi/ke2sQRiKXYAhieNvlOJu30SUrTfuYY9Pvw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@solid-checker/binding-linux-arm64-gnu@0.2.2':
+    resolution: {integrity: sha512-g/tGqRGhye2jznGcLcITXRrK5NqHy1g7Iq87PeArHE8Qfm6DwqrREZppIGjE5zjCK8TYB8tnAC6Uc/DjxL3cKQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@solid-checker/binding-linux-x64-gnu@0.2.2':
+    resolution: {integrity: sha512-gMBObxNEtjKcoe56slOaE6OQL+H/wwk7SfcgysMmAij3a+Sx3aPCmLqSSxzogna5xNJnV6fWd3jmj0o9aH/giQ==}
+    cpu: [x64]
+    os: [linux]
+
+  '@solid-checker/binding-win32-x64-msvc@0.2.2':
+    resolution: {integrity: sha512-BJnIkJWrocv4vCcayxuAsu/oEtqyJ1o8t0BPm6uvrmjn/AkUF2YR6Zx4TpVrjkHRKik0/1L5fP8OyqS15f+fKQ==}
+    cpu: [x64]
+    os: [win32]
 
   '@solidjs/signals@2.0.0-beta.21':
     resolution: {integrity: sha512-dVBzBxWVvO3SubC1f8KZLeVqkiIp5TNNosCEbamggsOyLkfaWTWgOkRi7J/q6G9u4o1+dZ8LhqK70TJmimiZ9g==}
@@ -1409,6 +1437,15 @@ packages:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
 
+  solid-checker-wasm@0.2.2:
+    resolution: {integrity: sha512-oBW5wRmkPIVcehA6uXGDdLV8uBbnrSpWX6lBgedBYdMEDwSkrM5+DnnxXffpkn9YVigj96SwxjBtc5mPsIJPbg==}
+    engines: {node: '>=20'}
+
+  solid-checker@0.2.2:
+    resolution: {integrity: sha512-tNqbo+8Pj6Nm57sZeabziC0y51gQzaT+wZYsboVUCjgF6eHk2eLbMkRqC3DcrE9TH86yPfwTcZPOkG7owYV4Ug==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   solid-js@2.0.0-beta.21:
     resolution: {integrity: sha512-Z8YwRMXxnkseNrmWYE2l25orrAN2cRnIFanAPl3YbQyer8BIFOSaDQrmy7zQWZKiDn8Cp9JHPC143u44wVHAxQ==}
 
@@ -1898,7 +1935,6 @@ snapshots:
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/runtime@1.11.1':
     dependencies:
@@ -1908,12 +1944,10 @@ snapshots:
   '@emnapi/runtime@1.11.2':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@eslint-community/eslint-utils@4.9.1(eslint@9.39.5(jiti@2.7.0))':
     dependencies:
@@ -2014,7 +2048,6 @@ snapshots:
       '@emnapi/core': 1.11.2
       '@emnapi/runtime': 1.11.2
       '@tybys/wasm-util': 0.10.3
-    optional: true
 
   '@oxc-project/types@0.139.0': {}
 
@@ -2128,6 +2161,21 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
+  '@solid-checker/binding-darwin-arm64@0.2.2':
+    optional: true
+
+  '@solid-checker/binding-darwin-x64@0.2.2':
+    optional: true
+
+  '@solid-checker/binding-linux-arm64-gnu@0.2.2':
+    optional: true
+
+  '@solid-checker/binding-linux-x64-gnu@0.2.2':
+    optional: true
+
+  '@solid-checker/binding-win32-x64-msvc@0.2.2':
+    optional: true
+
   '@solidjs/signals@2.0.0-beta.21': {}
 
   '@solidjs/testing-library@1.0.0-beta.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
@@ -2158,7 +2206,6 @@ snapshots:
   '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@types/aria-query@5.0.4': {}
 
@@ -2969,6 +3016,26 @@ snapshots:
       mrmime: 2.0.1
       totalist: 3.0.1
 
+  solid-checker-wasm@0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2):
+    dependencies:
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+
+  solid-checker@0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2):
+    dependencies:
+      solid-checker-wasm: 0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+    optionalDependencies:
+      '@solid-checker/binding-darwin-arm64': 0.2.2
+      '@solid-checker/binding-darwin-x64': 0.2.2
+      '@solid-checker/binding-linux-arm64-gnu': 0.2.2
+      '@solid-checker/binding-linux-x64-gnu': 0.2.2
+      '@solid-checker/binding-win32-x64-msvc': 0.2.2
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+
   solid-js@2.0.0-beta.21:
     dependencies:
       '@solidjs/signals': 2.0.0-beta.21
@@ -3027,8 +3094,7 @@ snapshots:
     dependencies:
       typescript: 5.9.3
 
-  tslib@2.8.1:
-    optional: true
+  tslib@2.8.1: {}
 
   type-check@0.4.0:
     dependencies:
