@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      ag-stack:
+        specifier: ^36.0.0
+        version: 36.0.1
     devDependencies:
       '@solidjs/testing-library':
         specifier: 1.0.0-beta.2

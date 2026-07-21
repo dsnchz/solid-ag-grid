@@ -76,5 +76,8 @@
     "vite": "^8.1.5",
     "vite-plugin-solid": "3.0.0-next.14",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "ag-stack": "^36.0.0"
   }
 }
