@@ -4,19 +4,19 @@ import { createEffect, createSignal, onCleanup } from "solid-js";
 
 import type { RenderDetails } from "./interfaces";
 
-export interface JsCellRendererOptions {
+export type JsCellRendererOptions = {
   context: Context;
   renderDetails: Accessor<RenderDetails | undefined>;
   /** true while an inline (non-popup) editor is active — the renderer is torn down (T3.8) */
   suppress?: Accessor<boolean>;
-}
+};
 
-export interface JsCellRenderer {
+export type JsCellRenderer = {
   /** getGui() element of the live JS renderer — insert as derived JSX where the value goes */
   gui: Accessor<HTMLElement | undefined>;
   /** live instance, for ICellComp.getCellRenderer */
   instance: () => ICellRendererComp | undefined;
-}
+};
 
 /**
  * Manages the lifecycle of a JS (non-framework) cell renderer. Port of React's

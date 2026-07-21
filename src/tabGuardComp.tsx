@@ -7,11 +7,11 @@ import { onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "./core/beansContext";
 
-export interface TabGuardRef {
+export type TabGuardRef = {
   forceFocusOutOfContainer(up?: boolean): void;
-}
+};
 
-interface TabGuardProps {
+type TabGuardProps = {
   children: Element;
   eFocusableElement: HTMLDivElement;
   forceFocusOutWhenTabGuardsAreEmpty?: boolean;
@@ -19,7 +19,7 @@ interface TabGuardProps {
   onTabKeyDown: (e: KeyboardEvent) => void;
   isEmpty?: () => boolean;
   ref: (ref: TabGuardRef) => void;
-}
+};
 
 const TabGuardComp = (props: TabGuardProps) => {
   const { context } = useContext(BeansContext);

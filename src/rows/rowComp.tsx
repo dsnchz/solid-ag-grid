@@ -8,10 +8,10 @@ import CellComp from "../cells/cellComp";
 import { BeansContext } from "../core/beansContext";
 import { agFlush, getNextValueIfDifferent } from "../core/utils";
 
-interface RowCompProps {
+type RowCompProps = {
   rowCtrl: RowCtrl;
   containerType: RowContainerType;
-}
+};
 
 const RowComp = (props: RowCompProps) => {
   const { context, editSvc } = useContext(BeansContext);

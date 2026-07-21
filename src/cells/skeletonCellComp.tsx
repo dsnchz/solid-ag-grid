@@ -5,9 +5,9 @@ import { BeansContext } from "../core/beansContext";
 import { createJsCellRenderer } from "./createJsCellRenderer";
 import type { RenderDetails } from "./interfaces";
 
-interface SkeletonCellRendererProps {
+type SkeletonCellRendererProps = {
   cellCtrl: CellCtrl;
-}
+};
 
 /**
  * Loading comp shown while a cell's real renderer is not ready: the fallback of the <Loading>
