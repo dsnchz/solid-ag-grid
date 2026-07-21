@@ -12,7 +12,7 @@ Solid 2.0's headline is first-class **async data**: computations can await,
 replaces the wrapper's accommodation machinery (`whenReady`,
 `RenderStatusService`, `flush()`), because that machinery solves **async
 commit**: signal writes land on a microtask, and an imperative core sometimes
-needs to know its pushes hit the DOM (measuring, scrolling) *now*. There is no
+needs to know its pushes hit the DOM (measuring, scrolling) _now_. There is no
 promise anywhere in that problem — no async value to suspend on. The lag is
 between write and commit, which the graph treats as internal scheduling.
 
@@ -23,13 +23,13 @@ between write and commit, which the graph treats as internal scheduling.
 
 ## The write/read legality map (all empirically proven)
 
-| Scope | Write signals? | Read signal-backed props? |
-|---|---|---|
-| `ref` callbacks (run **unowned**, parent→child, on **disconnected** elements) | ✓ legal | ✗ **stale** — mid-flush unowned reads see the pre-flush value (`REACTIVITY_HALTED` in the wild). Capture in the component body with `untrack(() => props.x)` |
-| Effect **apply** phase | ✓ legal | ✓ tracked via compute phase |
-| `onSettled` | ✓ legal | ✓ but **it subscribes to caught pending async reads** and re-runs on resolve — once-only work needs an idempotence guard (this booted a second grid before it was caught) |
-| Memo/compute/component body | ✗ throws `REACTIVE_WRITE_IN_OWNED_SCOPE` | ✓ (the normal case) |
-| **Disposal** (`onCleanup`, cleanup fns) | ✗ throws and **halts the reactive system** — bridge signals cleared during teardown need `ownedWrite: true` | — |
+| Scope                                                                         | Write signals?                                                                                              | Read signal-backed props?                                                                                                                                                 |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref` callbacks (run **unowned**, parent→child, on **disconnected** elements) | ✓ legal                                                                                                     | ✗ **stale** — mid-flush unowned reads see the pre-flush value (`REACTIVITY_HALTED` in the wild). Capture in the component body with `untrack(() => props.x)`              |
+| Effect **apply** phase                                                        | ✓ legal                                                                                                     | ✓ tracked via compute phase                                                                                                                                               |
+| `onSettled`                                                                   | ✓ legal                                                                                                     | ✓ but **it subscribes to caught pending async reads** and re-runs on resolve — once-only work needs an idempotence guard (this booted a second grid before it was caught) |
+| Memo/compute/component body                                                   | ✗ throws `REACTIVE_WRITE_IN_OWNED_SCOPE`                                                                    | ✓ (the normal case)                                                                                                                                                       |
+| **Disposal** (`onCleanup`, cleanup fns)                                       | ✗ throws and **halts the reactive system** — bridge signals cleared during teardown need `ownedWrite: true` | —                                                                                                                                                                         |
 
 Related mechanics: Solid refs fire parent-before-children (React commits
 bottom-up) → comps whose ctrls need child elements use a guarded `setup()`
@@ -39,7 +39,7 @@ mid-apply; the `runWithoutFlush` latch is hygiene, not correctness.
 ## The reactive doctrine (what construct for what state)
 
 1. **Atoms from the core → signals.** compProxy setters are pre-atomized
-   pushes (`setWidth`, `toggleCss`); independent signals *are* the fine-grained
+   pushes (`setWidth`, `toggleCss`); independent signals _are_ the fine-grained
    representation. Stores would recompose atoms just to split them again.
 2. **Values derive; lifecycles effect.** Rendering state is memos + derived
    JSX; `createEffect` only for (a) reactive→core pushes, (b) signal-keyed
@@ -60,14 +60,14 @@ mid-apply; the `runWithoutFlush` latch is hygiene, not correctness.
    row model (diff-by-`getRowId`, transactions) — not a store's. Store
    mutations are invisible to the grid (identity-diffed doorway). The
    store→transaction adapter (roadmap, opt-in `rowStore`) bridges this
-   declaratively *on top of* the public API.
+   declaratively _on top of_ the public API.
 
 ## Scorecard vs the React wrapper
 
 Deleted outright: `useSyncExternalStore` dual paths, `memo()`/`useCallback`
 ceremony, StrictMode workarounds. The body+containers+header shell carries
 three effects; rows+cells two — every one classified. Derived JSX insertion of
-JS-component GUIs *exceeds* React (elements migrate parents when wrappers
+JS-component GUIs _exceeds_ React (elements migrate parents when wrappers
 toggle). Seeding beats React (zero empty-row-flash, proven by rAF sampling).
 Costs unique to 2.0: the stale-read ref law, inverted ref order, `onSettled`
 async subscription, `ownedWrite` disposal law — fewer pretzels, different
@@ -77,12 +77,12 @@ locations, all concentrated at the bridge and named.
 
 ```ts
 const rows = createMemo(async () => {
-  const data = await fetchRows();      // tracking ENDS here
-  return data.filter(r => r.owner === userId()); // userId() NEVER re-runs this
+  const data = await fetchRows(); // tracking ENDS here
+  return data.filter((r) => r.owner === userId()); // userId() NEVER re-runs this
 });
 ```
 
-Read signals *before* the first `await`. `solid-checker` (advisory
+Read signals _before_ the first `await`. `solid-checker` (advisory
 `check:solid` script) flags this as `reactive-read-after-await`.
 
 ## Guided reading
@@ -97,8 +97,8 @@ Read signals *before* the first `await`. `solid-checker` (advisory
 
 ## Checkpoints
 
-1. Why can a `ref` callback legally *write* a signal it could not correctly
-   *read*? What is each half of the asymmetry protecting?
+1. Why can a `ref` callback legally _write_ a signal it could not correctly
+   _read_? What is each half of the asymmetry protecting?
 2. A colleague proposes storing portal props in a `createStore` for finer
    granularity. Using the `isWrappable` law, explain what breaks first.
 3. Why does the `gridCreated` guard exist even though `onSettled` "runs once"?
