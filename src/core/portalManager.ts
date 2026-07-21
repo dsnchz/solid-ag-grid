@@ -26,7 +26,7 @@ import type { SolidComponent, UserSolidComponent } from "./solidComponent";
 //   and Solid 2.0 batches signal writes to the microtask natively.
 
 /** A user-component portal entry rendered by GridPortals inside the grid entry component. */
-export interface PortalInfo {
+export type PortalInfo = {
   /** parity with React's portalKey — informational only; <For> keys by object identity */
   key: string;
   /** the SolidComponent's wrapping element (div.ag-solid-container) the portal renders into */
@@ -42,7 +42,7 @@ export interface PortalInfo {
    * the props signal — an untracked signal-backed read would trip STRICT_READ_UNTRACKED (§7.1)
    */
   ref: (instance: any) => void;
-}
+};
 
 const MAX_COMPONENT_CREATION_TIME_IN_MS: number = 1000; // a second should be more than enough to instantiate a component
 

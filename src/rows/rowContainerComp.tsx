@@ -12,11 +12,11 @@ import { insertDomComment } from "../core/domComment";
 import { agFlush, classesList, getNextValueIfDifferent } from "../core/utils";
 import RowComp from "./rowComp";
 
-interface RowContainerCompProps {
+type RowContainerCompProps = {
   name: RowContainerName;
   viewportElement: HTMLElement;
   extraClassName?: string | null;
-}
+};
 
 const RowContainerComp = (props: RowContainerCompProps) => {
   const { context, gos } = useContext(BeansContext);

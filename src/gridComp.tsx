@@ -25,9 +25,9 @@ import GridBodyComp from "./gridBodyComp";
 import type { TabGuardRef } from "./tabGuardComp";
 import TabGuardComp from "./tabGuardComp";
 
-interface GridCompProps {
+type GridCompProps = {
   context: Context;
-}
+};
 
 type FocusableContainerComp = Component & FocusableContainer;
 type HeaderDropZonesComp = Component & { getFocusableContainers?: () => FocusableContainerComp[] };

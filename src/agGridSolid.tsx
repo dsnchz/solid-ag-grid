@@ -24,9 +24,9 @@ import { SolidFrameworkComponentWrapper } from "./core/solidFrameworkComponentWr
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
 import GridComp from "./gridComp";
 
-export interface AgGridSolidRef<TData = any> {
+export type AgGridSolidRef<TData = any> = {
   api: GridApi<TData>;
-}
+};
 
 export interface AgGridSolidProps<TData = any> extends GridOptions<TData> {
   gridOptions?: GridOptions<TData>;

@@ -29,24 +29,24 @@ import { createJsCellRenderer } from "./createJsCellRenderer";
 import type { EditDetails, RenderDetails } from "./interfaces";
 import { SkeletonCellRenderer } from "./skeletonCellComp";
 
-interface CellCompProps {
+type CellCompProps = {
   cellCtrl: CellCtrl;
   printLayout: boolean;
   editingCell: boolean;
-}
+};
 
 /** Identity key for the mounted framework cell renderer: remount only on class/renderKey change. */
-interface FrameworkRendererInfo {
+type FrameworkRendererInfo = {
   Comp: any;
   key: number;
-}
+};
 
 /** getGui() elements of the live tool widget beans, inserted as derived JSX ahead of the value. */
-interface ToolWidgetElements {
+type ToolWidgetElements = {
   rowDrag?: HTMLElement;
   dnd?: HTMLElement;
   selection?: HTMLElement;
-}
+};
 
 const CellComp = (props: CellCompProps) => {
   const { context } = useContext(BeansContext);
