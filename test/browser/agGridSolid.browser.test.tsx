@@ -1,9 +1,5 @@
 import { render } from "@solidjs/testing-library";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  getGridApi,
-} from "ag-grid-community";
+import { AllCommunityModule, getGridApi, ModuleRegistry } from "ag-grid-community";
 import { describe, expect, it } from "vitest";
 
 import AgGridSolid from "../../src/index";

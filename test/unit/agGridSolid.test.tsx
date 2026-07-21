@@ -1,10 +1,10 @@
 import { render } from "@solidjs/testing-library";
 import type { ColDef } from "ag-grid-community";
 import {
-  AllCommunityModule,
-  ModuleRegistry,
   _processOnChange,
+  AllCommunityModule,
   getGridApi,
+  ModuleRegistry,
 } from "ag-grid-community";
 import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
@@ -24,11 +24,7 @@ interface CarRow {
   price: number;
 }
 
-const columnDefs: ColDef<CarRow>[] = [
-  { field: "make" },
-  { field: "model" },
-  { field: "price" },
-];
+const columnDefs: ColDef<CarRow>[] = [{ field: "make" }, { field: "model" }, { field: "price" }];
 
 const rowData: CarRow[] = [
   { make: "Toyota", model: "Celica", price: 35000 },
@@ -41,9 +37,7 @@ const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("AgGridSolid entry (jsdom)", () => {
   it("boots a real grid core: styled-root layers render and the GridApi is created", async () => {
-    const { container } = render(() => (
-      <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
-    ));
+    const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rowData} />);
     await settle();
 
     const outermost = container.firstElementChild as HTMLDivElement;
@@ -90,9 +84,7 @@ describe("AgGridSolid entry (jsdom)", () => {
 
   it("queues reactive prop changes while the grid is not ready, without throwing", async () => {
     const [rows, setRows] = createSignal<CarRow[]>(rowData);
-    const { container } = render(() => (
-      <AgGridSolid columnDefs={columnDefs} rowData={rows()} />
-    ));
+    const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rows()} />);
     await settle();
 
     const processOnChangeSpy = vi.mocked(_processOnChange);

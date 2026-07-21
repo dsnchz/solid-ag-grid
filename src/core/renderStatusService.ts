@@ -1,10 +1,7 @@
 import type { IRenderStatusService } from "ag-grid-community";
 import { BeanStub } from "ag-grid-community";
 
-export class RenderStatusService
-  extends BeanStub
-  implements IRenderStatusService
-{
+export class RenderStatusService extends BeanStub implements IRenderStatusService {
   public postConstruct(): void {
     // Solid 2.0 renders headers and cells asynchronously (microtask batching), so to help improve
     // DX we automatically queue resize operations after grouping operations so devs can write code
@@ -13,8 +10,7 @@ export class RenderStatusService
     //     p.api.autoSizeColumns(['ag-Grid-AutoColumn']);
     //   };
     if (this.beans.colAutosize) {
-      const queueResizeOperationsForTick =
-        this.queueResizeOperationsForTick.bind(this);
+      const queueResizeOperationsForTick = this.queueResizeOperationsForTick.bind(this);
       this.addManagedEventListeners({
         rowExpansionStateChanged: queueResizeOperationsForTick,
         expandOrCollapseAll: queueResizeOperationsForTick,
@@ -50,9 +46,7 @@ export class RenderStatusService
     return this.beans.rowRenderer
       .getAllRowCtrls()
       .every(
-        (row) =>
-          row.isRowRendered() &&
-          row.getAllCellCtrls().every((cellCtrl) => !!cellCtrl.eGui),
+        (row) => row.isRowRendered() && row.getAllCellCtrls().every((cellCtrl) => !!cellCtrl.eGui),
       );
   }
 }
