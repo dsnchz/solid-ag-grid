@@ -5,8 +5,16 @@ import type {
   WrappableInterface,
 } from "ag-grid-community";
 import { BaseComponentWrapper } from "ag-grid-community";
+import type { Component } from "solid-js";
 
 import type { PortalManager } from "./portalManager";
+
+/**
+ * User components reach the wrapper with their prop shapes runtime-erased (cell renderers,
+ * filters, tool panels all flow through the same factory), so props are Record<string, any>
+ * by construction — the `any` is quarantined here.
+ */
+export type UserSolidComponent = Component<Record<string, any>>;
 
 /**
  * Minimal stub of SolidComponent (full portal-backed version lands in T3.6). Enough for the grid
@@ -14,7 +22,7 @@ import type { PortalManager } from "./portalManager";
  */
 export class SolidComponent implements WrappableInterface {
   constructor(
-    protected readonly solidComponent: any,
+    protected readonly solidComponent: UserSolidComponent,
     protected readonly portalManager: PortalManager,
     protected readonly componentType: ComponentType,
     protected readonly suppressFallbackMethods?: boolean,
@@ -43,9 +51,12 @@ export class SolidFrameworkComponentWrapper
   }
 
   protected createWrapper(
-    UserSolidComponent: { new (): any },
+    // BaseComponentWrapper declares a class constructor (vanilla comps are classes); for a
+    // framework wrapper the runtime value is the user's Solid function component.
+    comp: { new (): unknown },
     componentType: ComponentType,
   ): WrappableInterface {
+    const userComponent = comp as unknown as UserSolidComponent;
     // T3.6/T3.7 plug the reactive custom-component wrapper classes (per componentType.name) in
     // here, keyed off _getGridOption(this.gridOptions, 'reactiveCustomComponents'); until then
     // every component type falls through to the stub SolidComponent.
@@ -71,16 +82,11 @@ export class SolidFrameworkComponentWrapper
     };
     const ComponentClass = getComponentClass(componentType.name);
     if (ComponentClass) {
-      return new ComponentClass(UserSolidComponent, this.parent, componentType);
+      return new ComponentClass(userComponent, this.parent, componentType);
     }
     // only cell renderers and tool panel should use fallback methods
     const suppressFallbackMethods =
       !componentType.cellRenderer && componentType.name !== "toolPanel";
-    return new SolidComponent(
-      UserSolidComponent,
-      this.parent,
-      componentType,
-      suppressFallbackMethods,
-    );
+    return new SolidComponent(userComponent, this.parent, componentType, suppressFallbackMethods);
   }
 }
