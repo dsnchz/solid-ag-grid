@@ -36,10 +36,10 @@ export class SolidFrameworkOverrides extends VanillaFrameworkOverrides {
     return !isJsComp;
   }
 
-  override wrapIncoming: <T>(
-    callback: () => T,
-    source?: FrameworkOverridesIncomingSource,
-  ) => T = (callback, source) => {
+  override wrapIncoming: <T>(callback: () => T, source?: FrameworkOverridesIncomingSource) => T = (
+    callback,
+    source,
+  ) => {
     if (source === "ensureVisible") {
       // As ensureVisible could easily be called from grid code already running inside an effect
       // apply phase, we need to run it without flush() to avoid re-entrantly applying the pending

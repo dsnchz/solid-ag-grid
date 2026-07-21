@@ -26,10 +26,10 @@ flowchart TD
    `Context`). Row models, column state, focus management, editing, filtering,
    events — all beans. They never touch the DOM.
 2. **Ctrls** (controllers) are the per-visual-piece logic layer. A `CellCtrl`
-   knows *what* a cell should show, its CSS classes, whether it's editing — but
-   not *how* to render that. There is one ctrl type per visual concept:
+   knows _what_ a cell should show, its CSS classes, whether it's editing — but
+   not _how_ to render that. There is one ctrl type per visual concept:
    `GridCtrl`, `GridBodyCtrl`, `RowCtrl`, `CellCtrl`, `HeaderCellCtrl`, …
-3. **Comps** (components) are the rendering layer, and they are *replaceable*.
+3. **Comps** (components) are the rendering layer, and they are _replaceable_.
    AG Grid ships vanilla-JS comps; ag-grid-react ships React comps; we ship
    Solid comps. This is exactly the seam our deep integration plugs into — and
    why the vanilla renderer can serve as a behavioral oracle for ours: same
@@ -55,9 +55,9 @@ core drives; the framework merely reflects state into whatever reactivity
 system it has. React sets `useState`; we set signals; vanilla mutates DOM
 directly.
 
-**Who constructs what:** comps *construct* the structural ctrls (`GridCtrl`,
+**Who constructs what:** comps _construct_ the structural ctrls (`GridCtrl`,
 `GridBodyCtrl`, `RowContainerCtrl`, `GridHeaderCtrl`, `TabGuardCtrl`). But
-*content* ctrls (`RowCtrl`, `CellCtrl`, `HeaderCellCtrl`…) are constructed by
+_content_ ctrls (`RowCtrl`, `CellCtrl`, `HeaderCellCtrl`…) are constructed by
 core beans (row renderer, header navigation) and **handed to** the framework —
 the comp receives a ctrl and wraps it. That's why those classes are type-only
 exports from `ag-grid-community`: you never `new` them.
@@ -84,8 +84,8 @@ frameworks — all of which our port needs:
   `flushSync` (we suppress `flush()`) during re-entrant calls.
 - **Prop diffing**: framework wrappers accept all ~200 GridOptions as reactive
   props, diff them by identity, and feed changes to `_processOnChange` — the
-  core applies them. The grid is *not* re-rendered by prop changes; it is
-  *commanded* by them.
+  core applies them. The grid is _not_ re-rendered by prop changes; it is
+  _commanded_ by them.
 
 ## Modules and theming (the v33 shift)
 
@@ -93,7 +93,7 @@ frameworks — all of which our port needs:
   user registers (`ModuleRegistry.registerModules([AllCommunityModule])` or
   per-grid `modules` prop) — mandatory since v33, for tree-shaking. The wrapper
   passes them through; it implements none of it.
-- **Theming**: since v33 themes are grid *options* (`theme: themeQuartz`), not
+- **Theming**: since v33 themes are grid _options_ (`theme: themeQuartz`), not
   CSS imports. The wrapper's only job is rendering unclassed "styled-root" div
   layers the theming engine installs styles onto (3 of them in v36) — and never
   polluting them with classes.
@@ -105,7 +105,7 @@ frameworks — all of which our port needs:
 ## Guided reading (do this by hand, in order)
 
 1. `reference/ag-grid-react-v36/src/reactUi/agGridReactUi.tsx` — the entry.
-   Notice: `GridCoreCreator.create(...)` returns the API *synchronously* while
+   Notice: `GridCoreCreator.create(...)` returns the API _synchronously_ while
    UI mounts async; find the two `whenReady` callbacks and what each gates.
 2. `reference/ag-grid-react-v36/src/reactUi/rows/rowComp.tsx` — a handed-in
    ctrl consumer. Notice the compProxy literal, the single `setComp` call, and
@@ -125,5 +125,5 @@ frameworks — all of which our port needs:
 3. When a user's `rowData` prop changes, what path does that change take before
    rows visually update? (Name the function the wrapper calls and what layer
    reacts.)
-4. Why can the vanilla renderer serve as a *behavioral oracle* for our Solid
+4. Why can the vanilla renderer serve as a _behavioral oracle_ for our Solid
    comps — and what class of bug would it fail to catch?

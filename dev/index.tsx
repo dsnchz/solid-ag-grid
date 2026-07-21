@@ -1,5 +1,5 @@
-import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import { render } from "@solidjs/web";
+import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 
 import AgGridSolid from "../src/index";
 

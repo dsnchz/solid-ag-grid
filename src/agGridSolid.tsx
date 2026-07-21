@@ -1,30 +1,17 @@
-import type {
-  Context,
-  GridApi,
-  GridOptions,
-  GridParams,
-  Module,
-} from "ag-grid-community";
-import {
-  GridCoreCreator,
-  _combineAttributesAndGridOptions,
-  _processOnChange,
-} from "ag-grid-community";
 import type { JSX } from "@solidjs/web";
 import { Portal } from "@solidjs/web";
+import type { Context, GridApi, GridOptions, GridParams, Module } from "ag-grid-community";
 import {
-  For,
-  createEffect,
-  createSignal,
-  onCleanup,
-  onSettled,
-  untrack,
-} from "solid-js";
+  _combineAttributesAndGridOptions,
+  _processOnChange,
+  GridCoreCreator,
+} from "ag-grid-community";
+import { createEffect, createSignal, For, onCleanup, onSettled, untrack } from "solid-js";
 
 import { PortalManager } from "./core/portalManager";
+import { RenderStatusService } from "./core/renderStatusService";
 import { SolidFrameworkComponentWrapper } from "./core/solidFrameworkComponentWrapper";
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
-import { RenderStatusService } from "./core/renderStatusService";
 import GridComp from "./gridComp";
 
 export interface AgGridSolidRef<TData = any> {
@@ -108,9 +95,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       const processQueuedUpdates = () => {
         if (ready) {
           const getFn = () =>
-            frameworkOverrides?.shouldQueueUpdates()
-              ? undefined
-              : whenReadyFuncs.shift();
+            frameworkOverrides?.shouldQueueUpdates() ? undefined : whenReadyFuncs.shift();
           let fn = getFn();
           while (fn) {
             fn();
@@ -119,17 +104,11 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
         }
       };
 
-      frameworkOverrides = new SolidFrameworkOverrides(
-        processQueuedUpdates,
-        false,
-      );
+      frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, false);
       const renderStatus = new RenderStatusService();
       const gridParams: GridParams = {
         providedBeanInstances: {
-          frameworkCompWrapper: new SolidFrameworkComponentWrapper(
-            manager,
-            mergedGridOps,
-          ),
+          frameworkCompWrapper: new SolidFrameworkComponentWrapper(manager, mergedGridOps),
           renderStatus,
         },
         modules,
@@ -151,6 +130,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
               destroyFuncs.push(func);
             },
           },
+          // eslint-disable-next-line solid/reactivity -- grid-core callback, intentionally untracked
           () => {
             if (ctx.isDestroyed()) {
               return;
@@ -246,9 +226,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       <div /* do not set class here */>
         <div /* do not set class here */>
           <div /* do not set class here */ ref={eInnermost}>
-            {context() && !context()!.isDestroyed() ? (
-              <GridComp context={context()!} />
-            ) : null}
+            {context() && !context()!.isDestroyed() ? <GridComp context={context()!} /> : null}
             <For each={portalManager()?.getPortals() ?? []}>
               {(info) => (
                 <Portal mount={info.mount}>
