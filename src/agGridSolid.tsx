@@ -3,6 +3,7 @@ import { isServer } from "@solidjs/web";
 import type { Context, GridApi, GridOptions, GridParams, Module } from "ag-grid-community";
 import {
   _combineAttributesAndGridOptions,
+  _findEnterpriseCoreModule,
   _processOnChange,
   GridCoreCreator,
 } from "ag-grid-community";
@@ -15,8 +16,10 @@ import {
   onSettled,
   Show,
   untrack,
+  useContext,
 } from "solid-js";
 
+import { LicenseContext, ModulesContext } from "./agGridProvider";
 import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
 import { RenderStatusService } from "./core/renderStatusService";
@@ -97,6 +100,14 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
 
+  // context reads need the component's owner, so they run in the body (grid boot itself is in
+  // onSettled below). The contexts carry accessors (see agGridProvider.tsx); the accessors are
+  // dereferenced once, at boot, under untrack. null means "no AgGridProvider in the tree" —
+  // the core uses that flag to tailor its missing-module error messages.
+  const modulesFromContext = useContext(ModulesContext);
+  const licenseKeyFromContext = useContext(LicenseContext);
+  const usesAgGridProvider = modulesFromContext !== null;
+
   let api: GridApi<TData> | undefined;
   let frameworkOverrides: SolidFrameworkOverrides | undefined;
   const destroyFuncs: (() => void)[] = [];
@@ -146,7 +157,14 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       return;
     }
     untrack(() => {
-      const modules: Module[] = [...(props.modules ?? [])];
+      const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
+      const licenseKey = licenseKeyFromContext();
+      if (licenseKey) {
+        // find the EnterpriseCore module which implements _ModuleWithLicenseManager; the lookup
+        // runs over the merged list because the enterprise bundle may arrive via the `modules`
+        // prop while the key arrives via the provider
+        _findEnterpriseCoreModule(modules)?.setLicenseKey(licenseKey);
+      }
 
       destroyFuncs.push(() => {
         portalManager.destroy();
@@ -181,7 +199,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
         }
       };
 
-      frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, false);
+      frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, usesAgGridProvider);
       const renderStatus = new RenderStatusService();
       const gridParams: GridParams = {
         providedBeanInstances: {

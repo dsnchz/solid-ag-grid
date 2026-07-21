@@ -11,8 +11,15 @@ import { runWithoutFlush } from "./utils";
 
 export class SolidFrameworkOverrides extends VanillaFrameworkOverrides {
   private queueUpdates = false;
-  // 'solid' is not part of the core's declared union ('vanilla' | 'react'); community core never
-  // reads this value at runtime, so we keep the truthful 'solid' tag under a cast.
+  // RENDERING-ENGINE CAST VERDICT (T3.11): 'solid' is not in the core's declared union
+  // ('vanilla' | 'react'), so both the field and the constructor arg carry casts. Audited
+  // ag-grid-community 36.0.1: `renderingEngine` has ZERO runtime readers (its only occurrence
+  // is the base-class assignment); its known external consumer is AG Charts integration, whose
+  // `=== 'react'` check correctly evaluates false for 'solid' and falls back to non-React chart
+  // rendering. The constructor's frameworkName feeds exactly two things — `baseDocLink =
+  // ${BASE_URL}/${frameworkName}-data-grid` (getDocLink + setValidationDocLink), so every core
+  // warning/error links to /solid-data-grid/ (desirable), and nothing else. Verdict: cast is
+  // safe; keep the truthful 'solid' tag.
   public override readonly renderingEngine = "solid" as unknown as "react";
 
   constructor(
