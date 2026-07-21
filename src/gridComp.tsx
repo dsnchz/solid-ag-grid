@@ -8,7 +8,15 @@ import type {
   TabGuardComp as JsTabGuardComp,
 } from "ag-grid-community";
 import { GridCtrl } from "ag-grid-community";
-import { createEffect, createMemo, createSignal, onCleanup, onSettled, untrack } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onSettled,
+  Show,
+  untrack,
+} from "solid-js";
 
 import { BeansContext } from "./core/beansContext";
 import { insertDomComment } from "./core/domComment";
@@ -239,30 +247,34 @@ const GridComp = (props: GridCompProps) => {
 
   const isFocusable = () => !gridCtrl?.isFocusable();
 
+  // we wait for initialised before rendering the children, so GridComp has created and
+  // registered with its GridCtrl before we create the child GridBodyComp. Otherwise the
+  // GridBodyComp would initialise first, before we have set the Layout CSS classes, causing
+  // the GridBodyComp to render rows to a grid that doesn't have its height specified, which
+  // would result in all the rows getting rendered (and if many rows, hangs the UI)
+  const readyBodyParent = createMemo(() =>
+    initialised() && !context.isDestroyed() ? eGridBodyParent() : undefined,
+  );
+
   return (
     <div ref={setRef} class={rootWrapperClasses()} style={topStyle()} role="presentation">
       <div class={rootWrapperBodyClasses()} ref={setGridBodyParent} role="presentation">
-        {initialised() && eGridBodyParent() && !context.isDestroyed() ? (
-          <BeansContext value={context.getBeans()}>
-            <TabGuardComp
-              ref={setTabGuardCompRef}
-              eFocusableElement={eGridBodyParent()!}
-              onTabKeyDown={onTabKeyDown}
-              gridCtrl={gridCtrl!}
-              forceFocusOutWhenTabGuardsAreEmpty={true}
-              isEmpty={isFocusable}
-            >
-              {
-                // we wait for initialised before rending the children, so GridComp has created and registered with it's
-                // GridCtrl before we create the child GridBodyComp. Otherwise the GridBodyComp would initialise first,
-                // before we have set the the Layout CSS classes, causing the GridBodyComp to render rows to a grid that
-                // doesn't have it's height specified, which would result if all the rows getting rendered (and if many rows,
-                // hangs the UI)
+        <Show when={readyBodyParent()}>
+          {(eBodyParent) => (
+            <BeansContext value={context.getBeans()}>
+              <TabGuardComp
+                ref={setTabGuardCompRef}
+                eFocusableElement={eBodyParent()}
+                onTabKeyDown={onTabKeyDown}
+                gridCtrl={gridCtrl!}
+                forceFocusOutWhenTabGuardsAreEmpty={true}
+                isEmpty={isFocusable}
+              >
                 <GridBodyComp />
-              }
-            </TabGuardComp>
-          </BeansContext>
-        ) : null}
+              </TabGuardComp>
+            </BeansContext>
+          )}
+        </Show>
       </div>
     </div>
   );

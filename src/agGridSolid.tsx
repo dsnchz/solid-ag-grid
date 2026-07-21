@@ -8,11 +8,13 @@ import {
 } from "ag-grid-community";
 import {
   createEffect,
+  createMemo,
   createSignal,
   For,
   NotReadyError,
   onCleanup,
   onSettled,
+  Show,
   untrack,
 } from "solid-js";
 
@@ -102,7 +104,18 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let ready = false;
 
   const [context, setContext] = createSignal<Context>();
-  const [portalManager, setPortalManager] = createSignal<PortalManager>();
+
+  // constructed eagerly in the body (allocation only — no DOM, SSR-safe): reactivity lives in
+  // the portals signal INSIDE the manager, so the instance itself needs no signal wrapper and
+  // the portal <For> below needs no existence guard
+  const portalManager = new PortalManager(untrack(() => props.componentWrappingElement));
+
+  // reactive guard for GridComp: context exists and is alive (set once per component instance;
+  // teardown unmounts the whole component, so isDestroyed is re-checked only on context change)
+  const liveContext = createMemo(() => {
+    const ctx = context();
+    return ctx && !ctx.isDestroyed() ? ctx : undefined;
+  });
 
   onCleanup(() => {
     ready = false;
@@ -135,10 +148,8 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     untrack(() => {
       const modules: Module[] = [...(props.modules ?? [])];
 
-      const manager = new PortalManager(props.componentWrappingElement);
-      setPortalManager(manager);
       destroyFuncs.push(() => {
-        manager.destroy();
+        portalManager.destroy();
       });
 
       // per-key isolation for async props (see the Open question 9 verdict above): not-ready
@@ -174,7 +185,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       const renderStatus = new RenderStatusService();
       const gridParams: GridParams = {
         providedBeanInstances: {
-          frameworkCompWrapper: new SolidFrameworkComponentWrapper(manager, mergedGridOps),
+          frameworkCompWrapper: new SolidFrameworkComponentWrapper(portalManager, mergedGridOps),
           renderStatus,
         },
         modules,
@@ -294,8 +305,8 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       <div /* do not set class here */>
         <div /* do not set class here */>
           <div /* do not set class here */ ref={eInnermost}>
-            {context() && !context()!.isDestroyed() ? <GridComp context={context()!} /> : null}
-            <For each={portalManager()?.getPortals() ?? []}>
+            <Show when={liveContext()}>{(ctx) => <GridComp context={ctx()} />}</Show>
+            <For each={portalManager.getPortals()}>
               {(info) => (
                 <Portal mount={info.mount}>
                   <info.SolidClass {...info.props} ref={info.ref} />
