@@ -214,6 +214,10 @@ describe("User-component portals (browser)", () => {
     const solid = mountSolid<CarRow>({
       columnDefs: [{ field: "make", filter: SolidFilter }, { field: "price" }],
       rowData,
+      // this test exercises the T3.6 non-reactive instance path (props.ref + waitForInstance);
+      // with the default reactiveCustomComponents=true the filter routes through
+      // FilterComponentWrapper instead (covered by the T3.7 reactive wrapper suite)
+      reactiveCustomComponents: false,
     });
     await waitFor(() => solid.api() != null);
     await waitFor(() => solid.api()!.getDisplayedRowCount() === 3);
