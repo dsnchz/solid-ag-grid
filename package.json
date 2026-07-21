@@ -1,10 +1,14 @@
 {
-  "name": "solid-ag-grid",
-  "version": "0.0.230",
-  "description": "AG Grid SolidJS Component",
+  "name": "@dschz/solid-ag-grid",
+  "version": "36.0.0-next.0",
+  "description": "AG Grid with 100% SolidJS rendering — Solid 2.x, AG Grid v36",
   "license": "MIT",
-  "author": "Niall Crosby <niall.crosby@ag-grid.com>",
+  "author": "Daniel Sanchez <dsanc89@icloud.com>",
   "contributors": [
+    {
+      "name": "Niall Crosby",
+      "email": "niall.crosby@ag-grid.com"
+    },
     {
       "name": "David Di Biase",
       "email": "dave.dibiase@gmail.com",
@@ -13,108 +17,64 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/solidjs-community/solid-ag-grid"
+    "url": "https://github.com/dsnchz/solid-ag-grid"
   },
-  "homepage": "https://github.com/solidjs-community/solid-ag-grid",
+  "homepage": "https://github.com/dsnchz/solid-ag-grid",
   "bugs": {
-    "url": "https://github.com/solidjs-community/solid-ag-grid/issues"
+    "url": "https://github.com/dsnchz/solid-ag-grid/issues"
   },
   "type": "module",
+  "sideEffects": false,
   "files": [
     "dist"
   ],
-  "main": "./dist/server.cjs",
-  "module": "./dist/server.js",
-  "types": "./dist/index.d.ts",
   "exports": {
-    "worker": {
-      "solid": "./dist/server.jsx",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/server.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/server.cjs"
-      }
-    },
-    "browser": {
-      "solid": "./dist/index.jsx",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
-    },
-    "deno": {
-      "solid": "./dist/server.jsx",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/server.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/server.cjs"
-      }
-    },
-    "node": {
-      "solid": "./dist/server.jsx",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/server.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/server.cjs"
-      }
-    },
-    "solid": "./dist/index.jsx",
-    "import": {
+    ".": {
+      "solid": "./dist/source/index.jsx",
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "require": {
-      "types": "./dist/index.d.cts",
-      "default": "./dist/index.cjs"
     }
   },
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "vite serve dev",
-    "clean": "rimraf bundles dist",
-    "build": "tsup",
-    "build-prod": "npm run build",
-    "format": "prettier -w \"src/**/*.{js,ts,json,css,tsx,jsx}\" \"dev/**/*.{js,ts,json,css,tsx,jsx}\"",
-    "update-deps": "taze -w && pnpm i",
+    "dev": "vite serve --config dev/vite.config.ts",
+    "clean": "rm -rf dist",
+    "build": "pnpm clean && vite build && tsc -p tsconfig.dts.json && tsc -p tsconfig.source.json",
+    "format": "prettier -w \"src/**/*\" \"dev/**/*.{ts,tsx,html}\" \"test/**/*\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "ag-grid-community": "31.1.1"
-  },
   "peerDependencies": {
-    "solid-js": ">=1.0.0"
-  },
-  "devDependencies": {
-    "ag-grid-community": "31.1.1",
-    "ag-grid-enterprise": "31.1.1",
-    "prettier": "^3.4.2",
-    "solid-js": "^1.9.4",
-    "taze": "^18.3.0",
-    "tsup": "^8.3.5",
-    "tsup-preset-solid": "^2.2.0",
-    "typescript": "^5.7.3",
-    "vite": "^6.0.11",
-    "vite-plugin-solid": "^2.11.0"
+    "@solidjs/web": "^2.0.0-beta.21",
+    "ag-grid-community": "^36.0.0",
+    "solid-js": "^2.0.0-beta.21"
   },
   "keywords": [
-    "solid"
+    "solid",
+    "solidjs",
+    "ag-grid",
+    "data-grid",
+    "datagrid",
+    "grid",
+    "table"
   ],
   "packageManager": "pnpm@9.0.0",
-  "browser": {
-    "./dist/server.js": "./dist/index.js",
-    "./dist/server.cjs": "./dist/index.cjs"
-  },
-  "typesVersions": {}
+  "devDependencies": {
+    "@solidjs/testing-library": "1.0.0-beta.2",
+    "@solidjs/web": "2.0.0-beta.21",
+    "@types/node": "^26.1.1",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "ag-grid-community": "^36.0.1",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.61.1",
+    "prettier": "^3.9.6",
+    "solid-js": "2.0.0-beta.21",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "3.0.0-next.14",
+    "vitest": "^4.1.10"
+  }
 }

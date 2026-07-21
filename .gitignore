@@ -133,3 +133,7 @@ dist
 tmp/
 .tmp/
 .agent/
+
+# build outputs
+dev/dist/
+*.tgz
