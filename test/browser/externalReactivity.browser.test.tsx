@@ -22,7 +22,7 @@ describe("external signal reactivity in grid-created components", () => {
       <div style={{ height: "300px" }}>
         <AgGridSolid
           columnDefs={[{ field: "a" }]}
-          rowData={[]}
+          rowData={[] as Array<{ a: number }>}
           noRowsOverlayComponent={ExternalSignalOverlay}
         />
       </div>

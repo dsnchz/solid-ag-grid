@@ -4,6 +4,8 @@ import type {
   CellStyle,
   Component as AgComponent,
   ICellComp,
+  ICellEditor,
+  ICellEditorComp,
   RowDragComp,
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
@@ -20,17 +22,12 @@ import {
 } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
+import { CellEditorComponentProxy } from "../customComp/cellEditorComponentProxy";
+import { warnReactiveCustomComponents } from "../customComp/util";
+import { jsxEditValue } from "./cellEditorComp";
 import { createJsCellRenderer } from "./createJsCellRenderer";
-import type { RenderDetails } from "./interfaces";
+import type { EditDetails, RenderDetails } from "./interfaces";
 import { SkeletonCellRenderer } from "./skeletonCellComp";
-
-let editorsNotSupportedWarned = false;
-const warnEditorsNotSupported = () => {
-  if (!editorsNotSupportedWarned) {
-    editorsNotSupportedWarned = true;
-    console.warn("AG Grid (solid-ag-grid): cell editors are not supported yet (arriving in T3.8)");
-  }
-};
 
 interface CellCompProps {
   cellCtrl: CellCtrl;
@@ -72,13 +69,24 @@ const CellComp = (props: CellCompProps) => {
       ? undefined
       : { compDetails: undefined, value: cellCtrl.getValueToDisplay(), force: false },
   );
+  const [editDetails, setEditDetails] = createSignal<EditDetails | undefined>();
   const [renderKey, setRenderKey] = createSignal<number>(1);
+  // bumped by CellEditorComponentProxy's refreshProps — drives the reactive editor-props
+  // spread in jsxEditorProxy (Solid analog of React's setRenderKey re-render on refreshProps)
+  const [editorParamsVersion, setEditorParamsVersion] = createSignal(0);
 
   const [userStyles, setUserStyles] = createSignal<CellStyle>();
 
   const [includeSelection, setIncludeSelection] = createSignal<boolean>(false);
   const [includeRowDrag, setIncludeRowDrag] = createSignal<boolean>(false);
   const [includeDndSource, setIncludeDndSource] = createSignal<boolean>(false);
+
+  // internal bridge signal: the JS-editor effect's cleanup clears it via AgPromise.then, which
+  // resolves SYNCHRONOUSLY on an already-settled promise — at disposal that is an owned scope,
+  // where writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev (§7.3a) — opt in narrowly
+  const [jsEditorComp, setJsEditorComp] = createSignal<ICellEditorComp | undefined>(undefined, {
+    ownedWrite: true,
+  });
 
   const forceWrapper = cellCtrl.isForceWrapper();
   const cellAriaRole = cellCtrl.getCellAriaRole() as JSX.AriaAttributes["role"];
@@ -90,19 +98,48 @@ const CellComp = (props: CellCompProps) => {
   let eCellWrapper: HTMLDivElement | undefined;
   let eCellValue: HTMLElement | undefined;
   let cellRendererRef: any = null;
+  let cellEditorRef: ICellEditor | undefined;
   let rowResizerElement: HTMLElement | null = null;
   let rowDragComp: RowDragComp | undefined;
 
   const cssManager = new CssClassManager(() => eGui);
 
-  // editDetails is always undefined until T3.8, so the React showTools edit guard collapses
   const showTools = createMemo(
-    () => renderDetails() != null && (includeSelection() || includeDndSource() || includeRowDrag()),
+    () =>
+      renderDetails() != null &&
+      (includeSelection() || includeDndSource() || includeRowDrag()) &&
+      (editDetails() == null || !!editDetails()!.popup),
   );
   const showCellWrapper = createMemo(() => forceWrapper || showTools());
 
-  // T3.8: becomes `editDetails() != null && !editDetails()!.popup` once editors exist
-  const suppressJsRenderer = () => false;
+  // the JS renderer is torn down while an inline (non-popup) editor is active
+  const suppressJsRenderer = () => {
+    const details = editDetails();
+    return details != null && !details.popup;
+  };
+
+  const setCellEditorRef = (cellEditor: ICellEditor | undefined) => {
+    cellEditorRef = cellEditor;
+    if (cellEditor) {
+      setTimeout(() => {
+        // RUN-ONCE DIVERGENCE vs React (documented per T3.7 warning): React captures
+        // `isCancelBeforeStart()` eagerly at setRef time — for the reactive proxy that runs
+        // BEFORE the editor component body has registered its callbacks (useGridCellEditor →
+        // setMethods), so the eager read can never see them; React's per-render re-runs paper
+        // over other ordering gaps but not this one. Solid components run once, so we evaluate
+        // inside the deferred turn, after the editor component (and its setMethods) has run —
+        // which also matches the vanilla comp's post-creation evaluation order.
+        const editingCancelledByUserComp = cellEditor.isCancelBeforeStart?.();
+        if (editingCancelledByUserComp) {
+          cellCtrl.stopEditing(true);
+          cellCtrl.focusCell(true);
+        } else {
+          cellCtrl.cellEditorAttached();
+          cellCtrl.enableEditorTooltipFeature(cellEditor);
+        }
+      });
+    }
+  };
 
   // JS (non-framework) renderer instance lifecycle; its gui inserts as derived JSX in the
   // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed
@@ -149,8 +186,7 @@ const CellComp = (props: CellCompProps) => {
         }
       },
 
-      // T3.8: editors
-      getCellEditor: () => null,
+      getCellEditor: () => cellEditorRef ?? null,
       getCellRenderer: () => cellRendererRef ?? jsRenderer.instance() ?? null,
       getParentOfValue: () => eCellValue ?? eCellWrapper ?? eGui ?? null,
 
@@ -187,10 +223,35 @@ const CellComp = (props: CellCompProps) => {
         setDetails();
       },
 
-      // T3.8: editors — warn and ignore so an accidental edit doesn't crash the grid
-      setEditDetails: (compDetails) => {
+      setEditDetails: (compDetails, popup, popupPosition, reactiveCustomComponents) => {
         if (compDetails) {
-          warnEditorsNotSupported();
+          let editorProxy: CellEditorComponentProxy | undefined;
+          if (compDetails.componentFromFramework) {
+            if (reactiveCustomComponents) {
+              editorProxy = new CellEditorComponentProxy(compDetails.params!, () =>
+                setEditorParamsVersion((prev) => prev + 1),
+              );
+            } else {
+              warnReactiveCustomComponents();
+            }
+          }
+          // start editing
+          setEditDetails({ compDetails, popup, popupPosition, compProxy: editorProxy });
+          if (!popup) {
+            setRenderDetails(undefined);
+          }
+        } else {
+          // if leaving editor & editor is focused, move focus to the cell
+          const recoverFocus = cellCtrl.hasBrowserFocus();
+          if (recoverFocus) {
+            compProxy.getFocusableElement().focus({ preventScroll: true });
+          }
+          // clear the cellEditorRef SYNCHRONOUSLY so the editService never sees a stale
+          // editor via getCellEditor — the JS-editor effect clears it again after the
+          // microtask flush, and the reactive proxy has no other clearing path (React's
+          // source notes the same regression)
+          cellEditorRef = undefined;
+          setEditDetails(undefined);
         }
       },
       refreshEditStyles: (editing, isPopup) => {
@@ -255,20 +316,71 @@ const CellComp = (props: CellCompProps) => {
     },
   );
 
+  // JS (non-framework) editor: instance creation via newAgStackInstance, inline gui attach +
+  // afterGuiAttached, destruction when the edit session ends (editDetails changes/clears).
+  // Effect classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
+  // instance (the JS cell editor bean), keyed on editDetails.
+  createEffect(
+    () => editDetails(),
+    (details) => {
+      const doingJsEditor = details && !details.compDetails.componentFromFramework;
+      if (!doingJsEditor || context.isDestroyed()) {
+        return;
+      }
+
+      const compDetails = details.compDetails;
+      const isPopup = details.popup === true;
+
+      const cellEditorPromise = compDetails.newAgStackInstance();
+
+      cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+        if (!cellEditor) {
+          return;
+        }
+
+        const compGui = cellEditor.getGui();
+
+        setCellEditorRef(cellEditor);
+
+        if (!isPopup) {
+          const parentEl = forceWrapper ? eCellWrapper : eGui;
+          parentEl?.appendChild(compGui);
+
+          cellEditor.afterGuiAttached?.();
+        }
+
+        setJsEditorComp(cellEditor);
+      });
+
+      return () => {
+        // AgPromise.then resolves synchronously on a settled promise, so this body runs
+        // inline here — including at disposal, which is why jsEditorComp has ownedWrite
+        cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+          const compGui = cellEditor.getGui();
+          cellCtrl.disableEditorTooltipFeature();
+          context.destroyBean(cellEditor);
+          setCellEditorRef(undefined);
+          setJsEditorComp(undefined);
+
+          compGui?.remove();
+        });
+      };
+    },
+  );
+
   // editing-style classes live on the imperative CssClassManager (they must compose with the
   // classes the ctrl pushes through toggleCss, so they cannot be derived JSX `class`).
   // Effect classification: signal-driven imperative DOM bridge (CssClassManager instance).
   createEffect(
-    () => ({ wrapper: showCellWrapper() }),
-    ({ wrapper }) => {
+    () => ({ wrapper: showCellWrapper(), details: editDetails() }),
+    ({ wrapper, details }) => {
       if (!eGui) {
         return;
       }
       cssManager.toggleCss("ag-cell-value", !wrapper);
-      // T3.8: editDetails-driven variants; no editor can be active yet
-      cssManager.toggleCss("ag-cell-inline-editing", false);
-      cssManager.toggleCss("ag-cell-popup-editing", false);
-      cssManager.toggleCss("ag-cell-not-inline-editing", true);
+      cssManager.toggleCss("ag-cell-inline-editing", !!details && !details.popup);
+      cssManager.toggleCss("ag-cell-popup-editing", !!details && !!details.popup);
+      cssManager.toggleCss("ag-cell-not-inline-editing", !details || !!details.popup);
     },
   );
 
@@ -380,16 +492,58 @@ const CellComp = (props: CellCompProps) => {
     </>
   );
 
-  // T3.8: editDetails branches (jsxEditValue / popup editor) render here
+  // React renders the cell value alongside the editor only for popup editing; inline editing
+  // replaces it (setRenderDetails(undefined) clears it in the same batch — this guard keeps
+  // structural parity for the transition frame)
+  const cellValueVisible = () => {
+    const details = editDetails();
+    return details == null || !!details.popup;
+  };
+
+  const showCellValueJsx = () => (
+    <Show when={cellValueVisible() && renderDetails() != null}>
+      <Show when={showCellWrapper()} fallback={valueOrCellCompJsx()}>
+        {(_wrapper) => {
+          // getParentOfValue must stop returning the span once it unmounts (React nulls the
+          // ref on unmount; Solid refs don't re-run) — Show function children give a scope
+          // to register the branch cleanup in
+          onCleanup(() => (eCellValue = undefined));
+          return (
+            <span
+              role="presentation"
+              id={`cell-${instanceId}`}
+              class={cellValueClass}
+              ref={(el) => (eCellValue = el)}
+            >
+              {valueOrCellCompJsx()}
+            </span>
+          );
+        }}
+      </Show>
+    </Show>
+  );
+
+  // framework inline editor / popup editor branches; JS inline editors mount imperatively via
+  // the JS-editor effect above (jsxEditValue returns null for them)
+  const showEditValueJsx = () => (
+    <Show when={editDetails()} keyed>
+      {(details) =>
+        jsxEditValue(details, setCellEditorRef, eGui!, cellCtrl, jsEditorComp, editorParamsVersion)
+      }
+    </Show>
+  );
+
+  const showCellOrEditorJsx = () => (
+    <>
+      {showCellValueJsx()}
+      {showEditValueJsx()}
+    </>
+  );
+
   const showCellJsx = () => (
-    <Show
-      when={showCellWrapper()}
-      fallback={<Show when={renderDetails()}>{valueOrCellCompJsx()}</Show>}
-    >
+    <Show when={showCellWrapper()} fallback={showCellOrEditorJsx()}>
       {(_wrapper) => {
-        // getParentOfValue must stop returning the wrapper once it unmounts (React nulls the
-        // ref on unmount; Solid refs don't re-run) — Show function children give a scope to
-        // register the branch cleanup in
+        // same unmount-clearing contract as eCellValue above
         onCleanup(() => (eCellWrapper = undefined));
         return (
           <div
@@ -403,21 +557,7 @@ const CellComp = (props: CellCompProps) => {
             {toolWidgets()?.rowDrag}
             {toolWidgets()?.dnd}
             {toolWidgets()?.selection}
-            <Show when={renderDetails()}>
-              {(_details) => {
-                onCleanup(() => (eCellValue = undefined));
-                return (
-                  <span
-                    role="presentation"
-                    id={`cell-${instanceId}`}
-                    class={cellValueClass}
-                    ref={(el) => (eCellValue = el)}
-                  >
-                    {valueOrCellCompJsx()}
-                  </span>
-                );
-              }}
-            </Show>
+            {showCellOrEditorJsx()}
           </div>
         );
       }}
