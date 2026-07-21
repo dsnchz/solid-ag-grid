@@ -57,7 +57,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check:solid": "solid-checker --project tsconfig.json"
+    "check:solid": "solid-checker --project tsconfig.json",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "ag-stack": "^36.0.0"
@@ -69,6 +70,7 @@
     "@types/node": "^26.1.1",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
     "ag-grid-community": "^36.0.1",
     "eslint": "^9.39.5",
     "eslint-plugin-simple-import-sort": "^14.0.0",
