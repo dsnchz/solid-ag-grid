@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { isServer, Portal } from "@solidjs/web";
+import { isServer } from "@solidjs/web";
 import type { Context, GridApi, GridOptions, GridParams, Module } from "ag-grid-community";
 import {
   _combineAttributesAndGridOptions,
@@ -10,7 +10,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  For,
   NotReadyError,
   onCleanup,
   onSettled,
@@ -18,6 +17,7 @@ import {
   untrack,
 } from "solid-js";
 
+import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
 import { RenderStatusService } from "./core/renderStatusService";
 import { SolidFrameworkComponentWrapper } from "./core/solidFrameworkComponentWrapper";
@@ -306,13 +306,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
         <div /* do not set class here */>
           <div /* do not set class here */ ref={eInnermost}>
             <Show when={liveContext()}>{(ctx) => <GridComp context={ctx()} />}</Show>
-            <For each={portalManager.getPortals()}>
-              {(info) => (
-                <Portal mount={info.mount}>
-                  <info.SolidClass {...info.props} ref={info.ref} />
-                </Portal>
-              )}
-            </For>
+            <GridPortals portalManager={portalManager} />
           </div>
         </div>
       </div>

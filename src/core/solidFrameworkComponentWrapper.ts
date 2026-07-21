@@ -4,40 +4,14 @@ import type {
   GridOptions,
   WrappableInterface,
 } from "ag-grid-community";
-import { BaseComponentWrapper } from "ag-grid-community";
-import type { Component } from "solid-js";
+import { _getGridOption, BaseComponentWrapper } from "ag-grid-community";
 
+import { warnReactiveCustomComponents } from "../customComp/util";
 import type { PortalManager } from "./portalManager";
+import type { UserSolidComponent } from "./solidComponent";
+import { SolidComponent } from "./solidComponent";
 
-/**
- * User components reach the wrapper with their prop shapes runtime-erased (cell renderers,
- * filters, tool panels all flow through the same factory), so props are Record<string, any>
- * by construction — the `any` is quarantined here.
- */
-export type UserSolidComponent = Component<Record<string, any>>;
-
-/**
- * Minimal stub of SolidComponent (full portal-backed version lands in T3.6). Enough for the grid
- * core to hold a wrapper reference; does not render the user component yet.
- */
-export class SolidComponent implements WrappableInterface {
-  constructor(
-    protected readonly solidComponent: UserSolidComponent,
-    protected readonly portalManager: PortalManager,
-    protected readonly componentType: ComponentType,
-    protected readonly suppressFallbackMethods?: boolean,
-  ) {}
-
-  public hasMethod(_name: string): boolean {
-    return false;
-  }
-
-  public callMethod(_name: string, _args: IArguments): void {}
-
-  public addMethod(name: string, callback: (...args: any[]) => any): void {
-    (this as any)[name] = callback;
-  }
-}
+export type { UserSolidComponent } from "./solidComponent";
 
 export class SolidFrameworkComponentWrapper
   extends BaseComponentWrapper<WrappableInterface>
@@ -57,13 +31,37 @@ export class SolidFrameworkComponentWrapper
     componentType: ComponentType,
   ): WrappableInterface {
     const userComponent = comp as unknown as UserSolidComponent;
-    // T3.6/T3.7 plug the reactive custom-component wrapper classes (per componentType.name) in
-    // here, keyed off _getGridOption(this.gridOptions, 'reactiveCustomComponents'); until then
-    // every component type falls through to the stub SolidComponent.
-    const getComponentClass = (
-      propertyName: string,
-    ): (new (...args: any[]) => WrappableInterface) | undefined => {
-      switch (propertyName) {
+    const gridOptions = this.gridOptions;
+    const reactiveCustomComponents = _getGridOption(gridOptions, "reactiveCustomComponents");
+    if (reactiveCustomComponents) {
+      // T3.7 plugs the reactive wrapper classes (CustomComponentWrapper subclasses) into these
+      // slots; until then every name falls through to the plain SolidComponent below.
+      const getComponentClass = (
+        propertyName: string,
+      ): (new (...args: any[]) => WrappableInterface) | undefined => {
+        switch (propertyName) {
+          case "filter": // T3.7: Filter(Display)ComponentWrapper (keyed on enableFilterHandlers)
+          case "floatingFilterComponent": // T3.7: FloatingFilter(Display)ComponentWrapper
+          case "dateComponent": // T3.7: DateComponentWrapper
+          case "dragAndDropImageComponent": // T3.7: DragAndDropImageComponentWrapper
+          case "loadingOverlayComponent": // T3.7: CustomOverlayComponentWrapper
+          case "noRowsOverlayComponent": // T3.7: CustomOverlayComponentWrapper
+          case "activeOverlay": // T3.7: CustomOverlayComponentWrapper
+          case "statusPanel": // T3.7: StatusPanelComponentWrapper
+          case "toolPanel": // T3.7: ToolPanelComponentWrapper
+          case "menuItem": // T3.7: MenuItemComponentWrapper
+          case "cellRenderer": // T3.7: CellRendererComponentWrapper
+          case "innerHeaderComponent": // T3.7: InnerHeaderComponentWrapper
+          default:
+            return undefined;
+        }
+      };
+      const ComponentClass = getComponentClass(componentType.name);
+      if (ComponentClass) {
+        return new ComponentClass(userComponent, this.parent, componentType);
+      }
+    } else {
+      switch (componentType.name) {
         case "filter":
         case "floatingFilterComponent":
         case "dateComponent":
@@ -75,14 +73,9 @@ export class SolidFrameworkComponentWrapper
         case "toolPanel":
         case "menuItem":
         case "cellRenderer":
-        case "innerHeaderComponent":
-        default:
-          return undefined;
+          warnReactiveCustomComponents();
+          break;
       }
-    };
-    const ComponentClass = getComponentClass(componentType.name);
-    if (ComponentClass) {
-      return new ComponentClass(userComponent, this.parent, componentType);
     }
     // only cell renderers and tool panel should use fallback methods
     const suppressFallbackMethods =
