@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { Portal } from "@solidjs/web";
+import { isServer, Portal } from "@solidjs/web";
 import type { Context, GridApi, GridOptions, GridParams, Module } from "ag-grid-community";
 import {
   _combineAttributesAndGridOptions,
@@ -77,6 +77,12 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   // measures/installs styles against them), so it runs in onSettled rather than the ref
   // callbacks — Solid refs fire while the template is still disconnected.
   onSettled(() => {
+    // SSR contract: the server renders only the shell divs; the grid boots once, client-side,
+    // after hydration. onSettled should already be server-inert, but the guard makes the
+    // contract explicit rather than an implicit invariant of the 2.0 beta.
+    if (isServer) {
+      return;
+    }
     untrack(() => {
       const modules: Module[] = [...(props.modules ?? [])];
 
