@@ -179,45 +179,66 @@ const RowComp = (props: RowCompProps) => {
       row-id={rowId()}
       row-business-key={rowBusinessKey()}
     >
+      {/* the lane getters must return undefined once a lane unmounts (React nulls refs on
+          unmount; Solid refs don't re-run) — the core reads them for embedded full-width
+          targets and pinned-section hit-testing, and a stale detached element would be used.
+          Show function children give a scope to register the branch cleanups in. */}
       <Show when={showCells()}>
-        <Show when={pinnedWidths().renderLeft}>
-          <div
-            class="ag-grid-pinned-left-cells"
-            role="presentation"
-            style={{ width: `${pinnedWidths().leftWidth}px` }}
-          >
-            <div
-              class="ag-grid-container-wrapper"
-              role="presentation"
-              ref={(el) => (ePinnedLeftCells = el)}
-            >
-              {cellsJsx(() => partitionedCellCtrls().left)}
-            </div>
-          </div>
-        </Show>
-        <div
-          class="ag-grid-scrolling-cells"
-          role="presentation"
-          ref={(el) => (eScrollingCells = el)}
-          style={{ width: `${pinnedWidths().centerWidth}px` }}
-        >
-          {cellsJsx(() => partitionedCellCtrls().center)}
-        </div>
-        <Show when={pinnedWidths().renderRight}>
-          <div
-            class="ag-grid-pinned-right-cells"
-            role="presentation"
-            style={{ width: `${pinnedWidths().rightWidth}px` }}
-          >
-            <div
-              class="ag-grid-container-wrapper"
-              role="presentation"
-              ref={(el) => (ePinnedRightCells = el)}
-            >
-              {cellsJsx(() => partitionedCellCtrls().right)}
-            </div>
-          </div>
-        </Show>
+        {(_cells) => {
+          onCleanup(() => (eScrollingCells = undefined));
+          return (
+            <>
+              <Show when={pinnedWidths().renderLeft}>
+                {(_left) => {
+                  onCleanup(() => (ePinnedLeftCells = undefined));
+                  return (
+                    <div
+                      class="ag-grid-pinned-left-cells"
+                      role="presentation"
+                      style={{ width: `${pinnedWidths().leftWidth}px` }}
+                    >
+                      <div
+                        class="ag-grid-container-wrapper"
+                        role="presentation"
+                        ref={(el) => (ePinnedLeftCells = el)}
+                      >
+                        {cellsJsx(() => partitionedCellCtrls().left)}
+                      </div>
+                    </div>
+                  );
+                }}
+              </Show>
+              <div
+                class="ag-grid-scrolling-cells"
+                role="presentation"
+                ref={(el) => (eScrollingCells = el)}
+                style={{ width: `${pinnedWidths().centerWidth}px` }}
+              >
+                {cellsJsx(() => partitionedCellCtrls().center)}
+              </div>
+              <Show when={pinnedWidths().renderRight}>
+                {(_right) => {
+                  onCleanup(() => (ePinnedRightCells = undefined));
+                  return (
+                    <div
+                      class="ag-grid-pinned-right-cells"
+                      role="presentation"
+                      style={{ width: `${pinnedWidths().rightWidth}px` }}
+                    >
+                      <div
+                        class="ag-grid-container-wrapper"
+                        role="presentation"
+                        ref={(el) => (ePinnedRightCells = el)}
+                      >
+                        {cellsJsx(() => partitionedCellCtrls().right)}
+                      </div>
+                    </div>
+                  );
+                }}
+              </Show>
+            </>
+          );
+        }}
       </Show>
       <Show when={isFullWidth}>
         {/* T3.10: full-width / embedded full-width renderers; markup branch present, empty */}
