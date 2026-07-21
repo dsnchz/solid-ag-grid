@@ -1,0 +1,33 @@
+name: AG Grid compatibility watch
+
+# AG Grid internals are not semver-governed: a v36 minor can move symbols
+# this deep integration depends on. Build weekly against the newest ^36
+# release so drift surfaces here instead of in user issues.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  latest-ag-grid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Bump ag-grid-community to newest ^36
+        run: pnpm update ag-grid-community
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm exec playwright install chromium --with-deps
+      - run: pnpm test
+      - name: Report newer majors (informational)
+        if: always()
+        run: |
+          LATEST=$(npm view ag-grid-community dist-tags.latest)
+          echo "ag-grid-community latest on npm: $LATEST" >> "$GITHUB_STEP_SUMMARY"
