@@ -1,0 +1,543 @@
+import type { FrameworkOverridesIncomingSource } from 'ag-stack';
+import { _observeResize } from 'ag-stack';
+import React, {
+    forwardRef,
+    useCallback,
+    useContext,
+    useEffect,
+    useImperativeHandle,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+
+import type {
+    ComponentType,
+    Context,
+    FrameworkComponentWrapper,
+    GridApi,
+    GridOptions,
+    GridParams,
+    IDetailCellRenderer,
+    IDetailCellRendererCtrl,
+    IDetailCellRendererParams,
+    Module,
+    WrappableInterface,
+} from 'ag-grid-community';
+import {
+    BaseComponentWrapper,
+    GridCoreCreator,
+    VanillaFrameworkOverrides,
+    _combineAttributesAndGridOptions,
+    _findEnterpriseCoreModule,
+    _getGridOption,
+    _getGridRegisteredModules,
+    _isClientSideRowModel,
+    _isServerSideRowModel,
+    _processOnChange,
+    _warn,
+} from 'ag-grid-community';
+
+import GroupCellRenderer from '../reactUi/cellRenderer/groupCellRenderer';
+import { CellRendererComponentWrapper } from '../shared/customComp/cellRendererComponentWrapper';
+import { CustomOverlayComponentWrapper } from '../shared/customComp/customOverlayComponentWrapper';
+import { DateComponentWrapper } from '../shared/customComp/dateComponentWrapper';
+import { DragAndDropImageComponentWrapper } from '../shared/customComp/dragAndDropImageComponentWrapper';
+import { FilterComponentWrapper } from '../shared/customComp/filterComponentWrapper';
+import { FilterDisplayComponentWrapper } from '../shared/customComp/filterDisplayComponentWrapper';
+import { FloatingFilterComponentWrapper } from '../shared/customComp/floatingFilterComponentWrapper';
+import { FloatingFilterDisplayComponentWrapper } from '../shared/customComp/floatingFilterDisplayComponentWrapper';
+import { InnerHeaderComponentWrapper } from '../shared/customComp/innerHeaderComponentWrapper';
+import { MenuItemComponentWrapper } from '../shared/customComp/menuItemComponentWrapper';
+import { StatusPanelComponentWrapper } from '../shared/customComp/statusPanelComponentWrapper';
+import { ToolPanelComponentWrapper } from '../shared/customComp/toolPanelComponentWrapper';
+import { warnReactiveCustomComponents } from '../shared/customComp/util';
+import type { AgGridReactProps, InternalAgGridReactProps } from '../shared/interfaces';
+import { PortalManager } from '../shared/portalManager';
+import { ReactComponent } from '../shared/reactComponent';
+import { LicenseContext, ModulesContext } from './agGridProvider';
+import { BeansContext, RenderModeContext } from './beansContext';
+import GridComp from './gridComp';
+import { RenderStatusService } from './renderStatusService';
+import { CssClasses, isReact19, runWithoutFlushSync } from './utils';
+
+const deprecatedProps: Pick<InternalAgGridReactProps, 'setGridApi' | 'children' | 'maxComponentCreationTimeMs'> = {
+    setGridApi: undefined,
+    maxComponentCreationTimeMs: undefined,
+    children: undefined,
+};
+
+// Used to only pass gridOptions to the GridCoreCreator from the props
+type ReactCompProps = Omit<InternalAgGridReactProps, keyof GridOptions>;
+const reactPropsNotGridOptions: ReactCompProps = {
+    gridOptions: undefined,
+    modules: undefined,
+    containerStyle: undefined,
+    className: undefined,
+    passGridApi: undefined,
+    componentWrappingElement: undefined,
+    ...deprecatedProps,
+};
+const excludeReactCompProps = new Set(Object.keys(reactPropsNotGridOptions));
+const deprecatedReactCompProps = new Set(Object.keys(deprecatedProps));
+
+export const AgGridReactUi = <TData,>(props: InternalAgGridReactProps<TData>) => {
+    const modulesFromContext = useContext(ModulesContext);
+    const licenseKeyFromContext = useContext(LicenseContext);
+    const usesAgGridProvider = modulesFromContext !== null;
+
+    const apiRef = useRef<GridApi<TData>>();
+    const innermostRef = useRef<HTMLDivElement | null>(null);
+    const portalManager = useRef<PortalManager | null>(null);
+    const destroyFuncs = useRef<(() => void)[]>([]);
+    const whenReadyFuncs = useRef<(() => void)[]>([]);
+    const prevProps = useRef<AgGridReactProps<any>>(props);
+    const frameworkOverridesRef = useRef<ReactFrameworkOverrides>();
+    const gridIdRef = useRef<string | undefined>();
+
+    const ready = useRef<boolean>(false);
+
+    const [context, setContext] = useState<Context | undefined>(undefined);
+
+    // Hook to enable Portals to be displayed via the PortalManager
+    const [, setPortalRefresher] = useState(0);
+
+    const setOutermostRef = useCallback((outermost: HTMLDivElement | null) => {
+        if (!outermost) {
+            ready.current = false;
+            for (const f of destroyFuncs.current) {
+                f();
+            }
+            destroyFuncs.current.length = 0;
+            return;
+        }
+
+        const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext ?? [])];
+        if (licenseKeyFromContext) {
+            // find the EnterpriseCore module which implements _ModuleWithLicenseManager
+            // if found, set the license key
+            _findEnterpriseCoreModule(modules)?.setLicenseKey(licenseKeyFromContext);
+        }
+
+        if (!portalManager.current) {
+            portalManager.current = new PortalManager(
+                () => setPortalRefresher((prev) => prev + 1),
+                props.componentWrappingElement,
+                props.maxComponentCreationTimeMs
+            );
+            destroyFuncs.current.push(() => {
+                portalManager.current?.destroy();
+                portalManager.current = null;
+            });
+        }
+
+        const mergedGridOps = _combineAttributesAndGridOptions(
+            props.gridOptions,
+            props,
+            Object.keys(props).filter((key) => !excludeReactCompProps.has(key))
+        );
+
+        const processQueuedUpdates = () => {
+            if (ready.current) {
+                const getFn = () =>
+                    frameworkOverridesRef.current?.shouldQueueUpdates() ? undefined : whenReadyFuncs.current.shift();
+                let fn = getFn();
+                while (fn) {
+                    fn();
+                    fn = getFn();
+                }
+            }
+        };
+
+        const frameworkOverrides = new ReactFrameworkOverrides(processQueuedUpdates, usesAgGridProvider);
+        frameworkOverridesRef.current = frameworkOverrides;
+        const renderStatus = new RenderStatusService();
+        const gridParams: GridParams = {
+            providedBeanInstances: {
+                frameworkCompWrapper: new ReactFrameworkComponentWrapper(portalManager.current, mergedGridOps),
+                renderStatus,
+            },
+            modules,
+            frameworkOverrides,
+        };
+
+        const createUiCallback = (ctx: Context) => {
+            setContext(ctx);
+            ctx.createBean(renderStatus);
+
+            destroyFuncs.current.push(() => {
+                ctx.destroy();
+            });
+
+            // because React is Async, we need to wait for the UI to be initialised before exposing the API's
+            ctx.getBean('ctrlsSvc').whenReady(
+                {
+                    addDestroyFunc: (func) => {
+                        destroyFuncs.current.push(func);
+                    },
+                },
+                () => {
+                    if (ctx.isDestroyed()) {
+                        return;
+                    }
+
+                    const api = apiRef.current;
+                    if (api) {
+                        props.passGridApi?.(api);
+                    }
+                }
+            );
+        };
+
+        // this callback adds to ctrlsSvc.whenReady(), just like above, however because whenReady() executes
+        // funcs in the order they were received, we know adding items here will be AFTER the grid has set columns
+        // and data. this is because GridCoreCreator sets these between calling createUiCallback and acceptChangesCallback
+        const acceptChangesCallback = (context: Context) => {
+            context.getBean('ctrlsSvc').whenReady(
+                {
+                    addDestroyFunc: (func) => {
+                        destroyFuncs.current.push(func);
+                    },
+                },
+                () => {
+                    for (const f of whenReadyFuncs.current) {
+                        f();
+                    }
+                    whenReadyFuncs.current.length = 0;
+                    ready.current = true;
+                }
+            );
+        };
+
+        const gridCoreCreator = new GridCoreCreator();
+        // We ensure that the gridId is stable even in StrictMode
+        mergedGridOps.gridId ??= gridIdRef.current;
+        apiRef.current = gridCoreCreator.create(
+            outermost,
+            innermostRef.current!,
+            mergedGridOps,
+            createUiCallback,
+            acceptChangesCallback,
+            gridParams
+        );
+        destroyFuncs.current.push(() => {
+            apiRef.current = undefined;
+        });
+        if (apiRef.current) {
+            gridIdRef.current = apiRef.current.getGridId();
+        }
+    }, []);
+
+    const style = useMemo(() => {
+        return {
+            width: '100%',
+            height: '100%',
+            ...(props.containerStyle || {}),
+        };
+    }, [props.containerStyle]);
+
+    const processWhenReady = useCallback((func: () => void) => {
+        if (ready.current && !frameworkOverridesRef.current?.shouldQueueUpdates()) {
+            func();
+        } else {
+            whenReadyFuncs.current.push(func);
+        }
+    }, []);
+
+    useEffect(() => {
+        const changes = extractGridPropertyChanges(prevProps.current, props);
+        prevProps.current = props;
+        processWhenReady(() => {
+            if (apiRef.current) {
+                _processOnChange(changes, apiRef.current);
+            }
+        });
+    }, [props]);
+
+    const renderMode =
+        !(React as any).useSyncExternalStore || _getGridOption(props, 'renderingMode') === 'legacy'
+            ? 'legacy'
+            : 'default';
+    return (
+        <div className={props.className} style={style} ref={setOutermostRef}>
+            {/* IMPORTANT we need 3 layers of divs with NO className because the class is managed by the styled root */}
+            <div /* do not set className here */>
+                <div /* do not set className here */>
+                    <div /* do not set className here */ ref={innermostRef}>
+                        <RenderModeContext.Provider value={renderMode}>
+                            {context && !context.isDestroyed() ? (
+                                <GridComp key={context.instanceId} context={context} />
+                            ) : null}
+                            {portalManager.current?.getPortals() ?? null}
+                        </RenderModeContext.Provider>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+function extractGridPropertyChanges(prevProps: any, nextProps: any): { [p: string]: any } {
+    const changes: { [p: string]: any } = {};
+    for (const propKey of Object.keys(nextProps)) {
+        if (excludeReactCompProps.has(propKey)) {
+            if (deprecatedReactCompProps.has(propKey)) {
+                _warn(274, { prop: propKey });
+            }
+            continue;
+        }
+        const propValue = nextProps[propKey];
+        if (prevProps[propKey] !== propValue) {
+            changes[propKey] = propValue;
+        }
+    }
+
+    return changes;
+}
+
+class ReactFrameworkComponentWrapper
+    extends BaseComponentWrapper<WrappableInterface>
+    implements FrameworkComponentWrapper
+{
+    constructor(
+        private readonly parent: PortalManager,
+        private readonly gridOptions: GridOptions
+    ) {
+        super();
+    }
+
+    protected createWrapper(UserReactComponent: { new (): any }, componentType: ComponentType): WrappableInterface {
+        const gridOptions = this.gridOptions;
+        const reactiveCustomComponents = _getGridOption(gridOptions, 'reactiveCustomComponents');
+        if (reactiveCustomComponents) {
+            const getComponentClass = (propertyName: string) => {
+                switch (propertyName) {
+                    case 'filter':
+                        return _getGridOption(gridOptions, 'enableFilterHandlers')
+                            ? FilterDisplayComponentWrapper
+                            : FilterComponentWrapper;
+                    case 'floatingFilterComponent':
+                        return _getGridOption(gridOptions, 'enableFilterHandlers')
+                            ? FloatingFilterDisplayComponentWrapper
+                            : FloatingFilterComponentWrapper;
+                    case 'dateComponent':
+                        return DateComponentWrapper;
+                    case 'dragAndDropImageComponent':
+                        return DragAndDropImageComponentWrapper;
+                    case 'loadingOverlayComponent':
+                    case 'noRowsOverlayComponent':
+                    case 'activeOverlay':
+                        return CustomOverlayComponentWrapper;
+                    case 'statusPanel':
+                        return StatusPanelComponentWrapper;
+                    case 'toolPanel':
+                        return ToolPanelComponentWrapper;
+                    case 'menuItem':
+                        return MenuItemComponentWrapper;
+                    case 'cellRenderer':
+                        return CellRendererComponentWrapper;
+                    case 'innerHeaderComponent':
+                        return InnerHeaderComponentWrapper;
+                }
+            };
+            const ComponentClass = getComponentClass(componentType.name);
+            if (ComponentClass) {
+                return new ComponentClass(UserReactComponent, this.parent, componentType);
+            }
+        } else {
+            switch (componentType.name) {
+                case 'filter':
+                case 'floatingFilterComponent':
+                case 'dateComponent':
+                case 'dragAndDropImageComponent':
+                case 'loadingOverlayComponent':
+                case 'noRowsOverlayComponent':
+                case 'activeOverlay':
+                case 'statusPanel':
+                case 'toolPanel':
+                case 'menuItem':
+                case 'cellRenderer':
+                    warnReactiveCustomComponents();
+                    break;
+            }
+        }
+        // only cell renderers and tool panel should use fallback methods
+        const suppressFallbackMethods = !componentType.cellRenderer && componentType.name !== 'toolPanel';
+        return new ReactComponent(UserReactComponent, this.parent, componentType, suppressFallbackMethods);
+    }
+}
+
+// Define DetailCellRenderer and ReactFrameworkOverrides here to avoid circular dependency
+const DetailCellRenderer = forwardRef((props: IDetailCellRendererParams, ref: any) => {
+    const beans = useContext(BeansContext);
+    const { registry, context, gos, rowModel } = beans;
+
+    const [cssClasses, setCssClasses] = useState<CssClasses>(() => new CssClasses());
+    const [gridCssClasses, setGridCssClasses] = useState<CssClasses>(() => new CssClasses());
+    const [detailGridOptions, setDetailGridOptions] = useState<GridOptions>();
+    const [detailRowData, setDetailRowData] = useState<any[]>();
+
+    const ctrlRef = useRef<IDetailCellRendererCtrl>();
+    const eGuiRef = useRef<HTMLDivElement | null>(null);
+
+    const resizeObserverDestroyFunc = useRef<() => void>();
+
+    const parentModules = useMemo(
+        () => _getGridRegisteredModules(props.api.getGridId(), detailGridOptions?.rowModelType ?? 'clientSide'),
+        [props]
+    );
+    const topClassName = useMemo(() => cssClasses.toString() + ' ag-details-row', [cssClasses]);
+    const gridClassName = useMemo(() => gridCssClasses.toString() + ' ag-details-grid', [gridCssClasses]);
+
+    if (ref) {
+        useImperativeHandle(ref, () => ({
+            refresh() {
+                return ctrlRef.current?.refresh() ?? false;
+            },
+        }));
+    }
+
+    if (props.template) {
+        _warn(230);
+    }
+
+    const setRef = useCallback((eRef: HTMLDivElement | null) => {
+        eGuiRef.current = eRef;
+
+        if (!eRef || context.isDestroyed()) {
+            ctrlRef.current = context.destroyBean(ctrlRef.current);
+            resizeObserverDestroyFunc.current?.();
+            return;
+        }
+
+        const compProxy: IDetailCellRenderer = {
+            toggleCss: (name: string, on: boolean) => setCssClasses((prev) => prev.setClass(name, on)),
+            toggleDetailGridCss: (name: string, on: boolean) => setGridCssClasses((prev) => prev.setClass(name, on)),
+            setDetailGrid: (gridOptions) => setDetailGridOptions(gridOptions),
+            setRowData: (rowData) => setDetailRowData(rowData),
+            getGui: () => eGuiRef.current!,
+        };
+
+        const ctrl = registry.createDynamicBean<IDetailCellRendererCtrl>('detailCellRendererCtrl', true);
+        if (!ctrl) {
+            return;
+        } // should never happen, means master/detail module not loaded
+        context.createBean(ctrl);
+
+        ctrl.init(compProxy, props);
+
+        ctrlRef.current = ctrl;
+
+        if (gos.get('detailRowAutoHeight')) {
+            const checkRowSizeFunc = () => {
+                // when disposed, current is null, so nothing to do, and the resize observer will
+                // be disposed of soon
+                if (eGuiRef.current == null) {
+                    return;
+                }
+
+                const clientHeight = eGuiRef.current.clientHeight;
+
+                // if the UI is not ready, the height can be 0, which we ignore, as otherwise a flicker will occur
+                // as UI goes from the default height, to 0, then to the real height as UI becomes ready. this means
+                // it's not possible for have 0 as auto-height, however this is an improbable use case, as even an
+                // empty detail grid would still have some styling around it giving at least a few pixels.
+                if (clientHeight != null && clientHeight > 0) {
+                    // we do the update in a timeout, to make sure we are not calling from inside the grid
+                    // doing another update
+                    const updateRowHeightFunc = () => {
+                        props.node.setRowHeight(clientHeight);
+                        if (_isClientSideRowModel(gos, rowModel) || _isServerSideRowModel(gos, rowModel)) {
+                            rowModel.onRowHeightChanged();
+                        }
+                    };
+                    setTimeout(updateRowHeightFunc, 0);
+                }
+            };
+
+            resizeObserverDestroyFunc.current = _observeResize(beans, eRef, checkRowSizeFunc);
+            checkRowSizeFunc();
+        }
+    }, []);
+
+    const registerGridApi = useCallback((api: GridApi) => {
+        ctrlRef.current?.registerDetailWithMaster(api);
+    }, []);
+
+    return (
+        <div className={topClassName} ref={setRef}>
+            {detailGridOptions && (
+                <AgGridReactUi
+                    className={gridClassName}
+                    {...detailGridOptions}
+                    modules={parentModules}
+                    rowData={detailRowData}
+                    passGridApi={registerGridApi}
+                />
+            )}
+        </div>
+    );
+});
+
+class ReactFrameworkOverrides extends VanillaFrameworkOverrides {
+    private queueUpdates = false;
+    public override readonly renderingEngine = 'react';
+
+    constructor(
+        private readonly processQueuedUpdates: () => void,
+        public override readonly usesAgGridProvider: boolean
+    ) {
+        super('react');
+    }
+
+    private readonly frameworkComponents: any = {
+        agGroupCellRenderer: GroupCellRenderer,
+        agGroupRowRenderer: GroupCellRenderer,
+        agDetailCellRenderer: DetailCellRenderer,
+    };
+
+    public override frameworkComponent(name: string): any {
+        return this.frameworkComponents[name];
+    }
+
+    override isFrameworkComponent(comp: any): boolean {
+        if (!comp) {
+            return false;
+        }
+        const prototype = comp.prototype;
+        const isJsComp = prototype && 'getGui' in prototype;
+        return !isJsComp;
+    }
+
+    override wrapIncoming: <T>(callback: () => T, source?: FrameworkOverridesIncomingSource) => T = (
+        callback,
+        source
+    ) => {
+        if (source === 'ensureVisible') {
+            // As ensureVisible could easily be called from an effect which is already running inside a React render
+            // we need to run it without flushSync to avoid the DEV error from React when calling flushSync inside a render.
+            // This does mean there will be a flicker as the grid redraws the cells in the new location but this is deemed
+            // less of an issue then the error in the console for devs.
+            return runWithoutFlushSync(callback);
+        }
+        return callback();
+    };
+
+    getLockOnRefresh(): void {
+        this.queueUpdates = true;
+    }
+
+    releaseLockOnRefresh(): void {
+        this.queueUpdates = false;
+        this.processQueuedUpdates();
+    }
+
+    shouldQueueUpdates(): boolean {
+        return this.queueUpdates;
+    }
+
+    runWhenReadyAsync(): boolean {
+        // We make this async only for React 19 as StrictMode in React 19 double fires ref callbacks whereas previous versions of React do not.
+        return isReact19();
+    }
+}

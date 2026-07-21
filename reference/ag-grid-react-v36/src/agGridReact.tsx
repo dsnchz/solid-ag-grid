@@ -1,0 +1,31 @@
+import React, { Component } from 'react';
+
+import type { GridApi } from 'ag-grid-community';
+
+import { AgGridReactUi } from './reactUi/agGridReactUi';
+import type { AgGridReactProps } from './shared/interfaces';
+
+export class AgGridReact<TData = any> extends Component<AgGridReactProps<TData>, object> {
+    /** Grid Api available after onGridReady event has fired. */
+    public api!: GridApi<TData>;
+    private readonly apiListeners: Array<(params: any) => void> = [];
+
+    public registerApiListener(listener: (api: GridApi) => void) {
+        this.apiListeners.push(listener);
+    }
+
+    private readonly setGridApi = (api: GridApi) => {
+        this.api = api;
+        for (const listener of this.apiListeners) {
+            listener(api);
+        }
+    };
+
+    override componentWillUnmount() {
+        this.apiListeners.length = 0;
+    }
+
+    override render() {
+        return <AgGridReactUi<TData> {...this.props} passGridApi={this.setGridApi} />;
+    }
+}
