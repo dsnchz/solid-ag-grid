@@ -19,4 +19,7 @@ Chapters:
 
 1. [How AG Grid is architected](01-ag-grid-core-architecture.md) — the core
    library's design: beans, ctrls, comps, and the framework contract.
+2. [The Solid 2.0 timing model](02-solid-2-timing-model.md) — async data vs
+   async commit, the write/read legality map, the port's reactive doctrine,
+   and the scorecard against the React wrapper.
    (More chapters land as the port progresses.)
