@@ -1,21 +1,19 @@
 {
   "compilerOptions": {
-    "strict": true,
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
+    "moduleResolution": "bundler",
     "jsx": "preserve",
-    "jsxImportSource": "solid-js",
-    "noEmit": true,
+    "jsxImportSource": "@solidjs/web",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "types": [],
-    "baseUrl": "."
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "dev", "test", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["reference", "tmp", "dist", "node_modules"]
 }

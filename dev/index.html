@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>solid-ag-grid playground</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+      }
+      .panes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      .pane {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .grid-host {
+        height: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>@dschz/solid-ag-grid playground</h1>
+    <div class="panes">
+      <div class="pane">
+        <h2>Solid component (placeholder)</h2>
+        <div id="solid-root"></div>
+      </div>
+      <div class="pane">
+        <h2>Vanilla createGrid (parity oracle)</h2>
+        <div id="vanilla-grid" class="grid-host"></div>
+      </div>
+    </div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
