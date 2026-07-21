@@ -24,3 +24,6 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install chromium --with-deps
       - run: pnpm test
+      # informational coverage (behavioral parity is the real bar — no threshold gating)
+      - name: Coverage summary
+        run: pnpm vitest run --coverage --project unit --project ssr 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
