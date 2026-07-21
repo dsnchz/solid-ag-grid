@@ -82,24 +82,48 @@ describe("AgGridSolid entry (jsdom)", () => {
     expect(layer1.classList.contains("ag-styled-root")).toBe(true);
   });
 
-  it("queues reactive prop changes while the grid is not ready, without throwing", async () => {
+  it("queues reactive prop changes while the grid is not ready, then drains them once it is", async () => {
     const [rows, setRows] = createSignal<CarRow[]>(rowData);
     const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rows()} />);
-    await settle();
 
     const processOnChangeSpy = vi.mocked(_processOnChange);
     processOnChangeSpy.mockClear();
 
+    // change the prop before the grid has settled: ctrlsSvc is not ready yet, so the change is
+    // queued in whenReadyFuncs...
     setRows([...rowData, { make: "Porsche", model: "Boxster", price: 72000 }]);
     await settle();
 
-    // comps are stubs in T3.1 so ctrlsSvc never becomes ready: the change must be queued
-    // in whenReadyFuncs (drained by acceptChangesCallback once T3.3 lands), not applied
-    expect(processOnChangeSpy).not.toHaveBeenCalled();
+    // ...and with the full body/header comps (T3.3) registering all required ctrls, whenReady
+    // fires and acceptChangesCallback drains the queue through _processOnChange
+    expect(processOnChangeSpy).toHaveBeenCalledTimes(1);
+    const [changes, apiArg] = processOnChangeSpy.mock.calls[0]!;
+    expect(Object.keys(changes)).toEqual(["rowData"]);
 
-    // and the grid core is still alive
     const api = getGridApi(container.firstElementChild)!;
     expect(api.isDestroyed()).toBe(false);
+    expect(apiArg).toBe(api);
+    expect(api.getDisplayedRowCount()).toBe(3);
+  });
+
+  it("surfaces the api via props.ref and fires onGridReady once all ctrls are ready", async () => {
+    const refSpy = vi.fn();
+    const onGridReadySpy = vi.fn();
+    render(() => (
+      <AgGridSolid
+        columnDefs={columnDefs}
+        rowData={rowData}
+        ref={refSpy}
+        onGridReady={onGridReadySpy}
+      />
+    ));
+    await settle();
+
+    expect(onGridReadySpy).toHaveBeenCalledTimes(1);
+    expect(refSpy).toHaveBeenCalledTimes(1);
+    const ref = refSpy.mock.calls[0]![0];
+    expect(ref.api).toBeDefined();
+    expect(ref.api.isDestroyed()).toBe(false);
   });
 
   it("destroys the grid context on unmount", async () => {

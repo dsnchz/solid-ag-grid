@@ -1,0 +1,159 @@
+import type { IRowContainerComp, RowContainerName, RowCtrl } from "ag-grid-community";
+import {
+  _getRowContainerClass,
+  _getRowContainerOptions,
+  _getRowSpanContainerClass,
+  RowContainerCtrl,
+} from "ag-grid-community";
+import { createMemo, createSignal, onCleanup, onSettled, untrack, useContext } from "solid-js";
+
+import { BeansContext } from "../core/beansContext";
+import { insertDomComment } from "../core/domComment";
+import { agFlush, classesList, getNextValueIfDifferent } from "../core/utils";
+
+interface RowContainerCompProps {
+  name: RowContainerName;
+  viewportElement: HTMLElement;
+  extraClassName?: string | null;
+}
+
+const RowContainerComp = (props: RowContainerCompProps) => {
+  const { context, gos } = useContext(BeansContext);
+
+  // name and viewportElement are stable for the life of the comp (name is a literal at every call
+  // site; GridBodyComp's conditional remounts us if the viewport ever changed) and are read from
+  // ref callbacks — capture once in the body (see the setComp verdict in gridComp.tsx)
+  const name = untrack(() => props.name);
+  const viewportElement = untrack(() => props.viewportElement);
+
+  const containerOptions = _getRowContainerOptions(name);
+
+  let eContainer: HTMLDivElement | undefined;
+  let eSpanContainer: HTMLDivElement | undefined;
+  let rowCtrlsRef: RowCtrl[] = [];
+  let prevRowCtrlsRef: RowCtrl[] = [];
+  const [hidden, setHidden] = createSignal(true);
+
+  // T3.4 renders `<For each={rowCtrlsOrdered()}>` over RowComp; until then the ordered ctrl list
+  // is maintained (the ctrl→comp contract is complete) but the JSX renders no rows.
+  const [_rowCtrlsOrdered, setRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
+
+  const isSpanning = !!gos.get("enableCellSpan") && !!containerOptions.getSpannedRowCtrls;
+  let spannedRowCtrlsRef: RowCtrl[] = [];
+  let prevSpannedRowCtrlsRef: RowCtrl[] = [];
+  const [_spannedRowCtrlsOrdered, setSpannedRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
+
+  let domOrder = false;
+  let rowContainerCtrl: RowContainerCtrl | undefined;
+
+  const containerClasses = createMemo(() =>
+    classesList(_getRowContainerClass(name), hidden() ? "ag-hidden" : null, props.extraClassName),
+  );
+  const spanClasses = classesList("ag-spanning-container", _getRowSpanContainerClass(name));
+
+  // refs fire before the template is parented, so the comment is inserted from onSettled
+  onSettled(() => insertDomComment(` AG Row Container ${name} `, eContainer));
+
+  const updateRowCtrlsOrdered = (useFlush: boolean) => {
+    const next = getNextValueIfDifferent(prevRowCtrlsRef, rowCtrlsRef, domOrder)!;
+    if (next !== prevRowCtrlsRef) {
+      prevRowCtrlsRef = next;
+      agFlush(useFlush, () => setRowCtrlsOrdered(next));
+    }
+  };
+
+  const updateSpannedRowCtrlsOrdered = (useFlush: boolean) => {
+    const next = getNextValueIfDifferent(prevSpannedRowCtrlsRef, spannedRowCtrlsRef, domOrder)!;
+    if (next !== prevSpannedRowCtrlsRef) {
+      prevSpannedRowCtrlsRef = next;
+      agFlush(useFlush, () => setSpannedRowCtrlsOrdered(next));
+    }
+  };
+
+  // guarded setup runs from the container ref and (when spanning) the span-container ref, and
+  // fires once every element it needs exists (order-independent; see TabGuardComp.setupCtrl)
+  const setup = () => {
+    if (rowContainerCtrl || context.isDestroyed()) {
+      return;
+    }
+    if (!eContainer || (isSpanning && !eSpanContainer)) {
+      return;
+    }
+
+    const eContainerForCtrl = eContainer;
+    const eSpanContainerForCtrl = eSpanContainer;
+
+    const compProxy: IRowContainerComp = {
+      setRowCtrls: ({ rowCtrls, useFlushSync }) => {
+        const useFlush = !!useFlushSync && rowCtrlsRef.length > 0 && rowCtrls.length > 0;
+        rowCtrlsRef = rowCtrls;
+        updateRowCtrlsOrdered(useFlush);
+      },
+      setSpannedRowCtrls: (rowCtrls, useFlushSync) => {
+        const useFlush = !!useFlushSync && spannedRowCtrlsRef.length > 0 && rowCtrls.length > 0;
+        spannedRowCtrlsRef = rowCtrls;
+        updateSpannedRowCtrlsOrdered(useFlush);
+      },
+      setDomOrder: (value) => {
+        if (domOrder !== value) {
+          domOrder = value;
+          updateRowCtrlsOrdered(false);
+        }
+      },
+      setContainerWidth: (width) => {
+        eContainerForCtrl.style.width = width;
+        if (eSpanContainerForCtrl) {
+          eSpanContainerForCtrl.style.width = width;
+        }
+      },
+      setOffsetTop: (offset) => {
+        eContainerForCtrl.style.transform = `translateY(${offset})`;
+        if (eSpanContainerForCtrl) {
+          eSpanContainerForCtrl.style.transform = `translateY(${offset})`;
+        }
+      },
+      setHidden: (value) => setHidden(value),
+    };
+
+    rowContainerCtrl = context.createBean(new RowContainerCtrl(name));
+    rowContainerCtrl.setComp(
+      compProxy,
+      eContainerForCtrl,
+      eSpanContainerForCtrl,
+      viewportElement ?? eContainerForCtrl,
+    );
+  };
+
+  onCleanup(() => {
+    rowContainerCtrl = context.destroyBean(rowContainerCtrl);
+  });
+
+  const buildSpanContainer = () => (
+    <div
+      class={spanClasses}
+      ref={(el) => {
+        eSpanContainer = el;
+        setup();
+      }}
+      role="presentation"
+    >
+      {/* spanned RowComp rendering lands in T3.4 */}
+    </div>
+  );
+
+  return (
+    <div
+      class={containerClasses()}
+      ref={(el) => {
+        eContainer = el;
+        setup();
+      }}
+      role="presentation"
+    >
+      {/* RowComp rendering lands in T3.4 */}
+      {isSpanning ? buildSpanContainer() : null}
+    </div>
+  );
+};
+
+export default RowContainerComp;
