@@ -6,7 +6,15 @@ import {
   _processOnChange,
   GridCoreCreator,
 } from "ag-grid-community";
-import { createEffect, createSignal, For, onCleanup, onSettled, untrack } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  NotReadyError,
+  onCleanup,
+  onSettled,
+  untrack,
+} from "solid-js";
 
 import { PortalManager } from "./core/portalManager";
 import { RenderStatusService } from "./core/renderStatusService";
@@ -52,6 +60,37 @@ const solidPropsNotGridOptions: SolidCompProps = {
 };
 const excludeSolidCompProps = new Set(Object.keys(solidPropsNotGridOptions));
 
+// ASYNC GRID-OPTION PROPS VERDICT (ARCHITECTURE.md Open question 9, resolved T3.4):
+// PER-KEY ISOLATION, async rowData as a zero-ceremony feature. Solid 2.0 users will pass
+// async-sourced props (`rowData={data()}` from an async createMemo); a not-ready read throws
+// NotReadyError. If we let it propagate, ONE pending prop suspends the whole prop-diff compute
+// and stalls ALL prop-change application (footgun). Instead every prop key is read through a
+// per-key try/catch: not-ready keys are simply omitted from the snapshot — at grid creation
+// that means `rowData: undefined` (the grid shows its loading overlay, exactly the UX async
+// data wants), and in the prop-diff compute the tracked read has already subscribed us, so the
+// compute re-runs when the value resolves and the key diffs in as a normal grid-option change.
+// Evidence: test/browser/rowsCells.browser.test.tsx ("async rowData").
+const isNotReadyError = (e: unknown): boolean =>
+  e instanceof NotReadyError ||
+  // dev-mode untracked pending reads (grid creation runs in onSettled/untrack) throw a plain
+  // Error carrying this diagnostic code instead of NotReadyError
+  (e instanceof Error && e.message.includes("PENDING_ASYNC_UNTRACKED_READ"));
+
+/** Reads props[key], treating a not-ready async prop as "absent" (per-key isolation). */
+const readPropIfReady = (
+  props: { [key: string]: any },
+  key: string,
+  target: { [key: string]: any },
+): void => {
+  try {
+    target[key] = props[key];
+  } catch (e) {
+    if (!isNotReadyError(e)) {
+      throw e;
+    }
+  }
+};
+
 export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
@@ -73,10 +112,20 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     destroyFuncs.length = 0;
   });
 
+  // grid creation must run exactly once: reading a pending async prop inside onSettled links
+  // the onSettled computation to the async node (dev warns PENDING_ASYNC_FORBIDDEN_SCOPE), so
+  // onSettled RE-RUNS when the value resolves — without this guard a second grid would boot on
+  // the same elements (found via the Open question 9 browser test)
+  let gridCreated = false;
+
   // grid creation needs both styled-root layer elements attached to the document (the core
   // measures/installs styles against them), so it runs in onSettled rather than the ref
   // callbacks — Solid refs fire while the template is still disconnected.
   onSettled(() => {
+    if (gridCreated) {
+      return;
+    }
+    gridCreated = true;
     // SSR contract: the server renders only the shell divs; the grid boots once, client-side,
     // after hydration. onSettled should already be server-inert, but the guard makes the
     // contract explicit rather than an implicit invariant of the 2.0 beta.
@@ -92,10 +141,21 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
         manager.destroy();
       });
 
+      // per-key isolation for async props (see the Open question 9 verdict above): not-ready
+      // keys are absent from the creation snapshot and arrive later via the prop-diff effect
+      const initialProps: { [key: string]: any } = {};
+      for (const key of Object.keys(props)) {
+        if (!excludeSolidCompProps.has(key)) {
+          readPropIfReady(props, key, initialProps);
+        }
+      }
+      const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
+      readPropIfReady(props, "gridOptions", gridOptionsHolder);
+
       const mergedGridOps = _combineAttributesAndGridOptions(
-        props.gridOptions,
-        props,
-        Object.keys(props).filter((key) => !excludeSolidCompProps.has(key)),
+        gridOptionsHolder.gridOptions,
+        initialProps,
+        Object.keys(initialProps),
       );
 
       const processQueuedUpdates = () => {
@@ -193,14 +253,16 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   };
 
   createEffect(
-    // compute: read every grid-option prop key so each one is tracked, and return the snapshot
+    // compute: read every grid-option prop key so each one is tracked, and return the snapshot.
+    // Not-ready async keys are omitted per-key (Open question 9 verdict above): the tracked
+    // read already subscribed this compute, so it re-runs — and the key diffs in — on resolve.
     () => {
       const snapshot: { [key: string]: any } = {};
       for (const propKey of Object.keys(props)) {
         if (excludeSolidCompProps.has(propKey)) {
           continue;
         }
-        snapshot[propKey] = (props as any)[propKey];
+        readPropIfReady(props, propKey, snapshot);
       }
       return snapshot;
     },

@@ -5,11 +5,12 @@ import {
   _getRowSpanContainerClass,
   RowContainerCtrl,
 } from "ag-grid-community";
-import { createMemo, createSignal, onCleanup, onSettled, untrack, useContext } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onSettled, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
 import { insertDomComment } from "../core/domComment";
 import { agFlush, classesList, getNextValueIfDifferent } from "../core/utils";
+import RowComp from "./rowComp";
 
 interface RowContainerCompProps {
   name: RowContainerName;
@@ -34,14 +35,12 @@ const RowContainerComp = (props: RowContainerCompProps) => {
   let prevRowCtrlsRef: RowCtrl[] = [];
   const [hidden, setHidden] = createSignal(true);
 
-  // T3.4 renders `<For each={rowCtrlsOrdered()}>` over RowComp; until then the ordered ctrl list
-  // is maintained (the ctrl→comp contract is complete) but the JSX renders no rows.
-  const [_rowCtrlsOrdered, setRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
+  const [rowCtrlsOrdered, setRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
 
   const isSpanning = !!gos.get("enableCellSpan") && !!containerOptions.getSpannedRowCtrls;
   let spannedRowCtrlsRef: RowCtrl[] = [];
   let prevSpannedRowCtrlsRef: RowCtrl[] = [];
-  const [_spannedRowCtrlsOrdered, setSpannedRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
+  const [spannedRowCtrlsOrdered, setSpannedRowCtrlsOrdered] = createSignal<RowCtrl[]>([]);
 
   let domOrder = false;
   let rowContainerCtrl: RowContainerCtrl | undefined;
@@ -137,7 +136,9 @@ const RowContainerComp = (props: RowContainerCompProps) => {
       }}
       role="presentation"
     >
-      {/* spanned RowComp rendering lands in T3.4 */}
+      <For each={spannedRowCtrlsOrdered()}>
+        {(rowCtrl) => <RowComp rowCtrl={rowCtrl} containerType={containerOptions.type} />}
+      </For>
     </div>
   );
 
@@ -150,7 +151,11 @@ const RowContainerComp = (props: RowContainerCompProps) => {
       }}
       role="presentation"
     >
-      {/* RowComp rendering lands in T3.4 */}
+      {/* default <For> keys by ctrl reference == React key={instanceId} (ctrl identity is
+          stable per instanceId); getNextValueIfDifferent already preserved DOM order */}
+      <For each={rowCtrlsOrdered()}>
+        {(rowCtrl) => <RowComp rowCtrl={rowCtrl} containerType={containerOptions.type} />}
+      </For>
       {isSpanning ? buildSpanContainer() : null}
     </div>
   );

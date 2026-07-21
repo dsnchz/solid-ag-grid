@@ -59,6 +59,20 @@ export function runWithoutFlush<T>(func: () => T): T {
  * synchronously (scroll, keyboard nav) we run the writes then flush(). Controlled via the
  * `useFlush` param as we do not want to flush when we are likely to already be in a render cycle,
  * and via the suppress-flush latch (see runWithoutFlush).
+ *
+ * FLUSH VERDICT (ARCHITECTURE.md Open question 2, resolved T3.4): `flush()` is a safe
+ * `flushSync` stand-in for the row/cell swap paths.
+ * - Applying the whole pending batch (not just "our" writes) is consistent-by-construction and
+ *   caused no misbehavior under scroll (500-row ensureIndexVisible browser test, zero console
+ *   errors, virtualization intact).
+ * - `flush()` IS legal mid-apply-phase in dev — no diagnostic fires (unit test
+ *   "agFlush(true) called from inside an effect apply phase does not throw"). The
+ *   runWithoutFlush latch is therefore a re-entrancy hygiene measure on the ensureVisible path
+ *   (matching React's runWithoutFlushSync), not a hard requirement imposed by dev diagnostics;
+ *   suppressed flushes are never lost — the microtask batch applies them (latch unit test).
+ * - Signal writes inside effect apply phases are also legal (renderKey-bump pattern), so
+ *   grid-core callbacks re-entered from apply phases can drive compProxy setters freely.
+ * Evidence: test/unit/flushSemantics.test.tsx + test/browser/rowsCells.browser.test.tsx.
  */
 export const agFlush = (useFlush: boolean, fn: () => void): void => {
   fn();
