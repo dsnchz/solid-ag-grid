@@ -2,8 +2,8 @@
   <img width="100%" src="https://assets.solidjs.com/banner?background=tiles&project=solid-ag-grid" alt="solid-ag-grid">
 </p>
 
-> [!NOTE]  
-> This project doesn't currently have an active maintainer and may be behind on recent AG-Grid updates. If you have an interest in leading or pariticipatibg please join [Solid Discord](https://discord.com/invite/solidjs) to inquire further.
+> [!IMPORTANT]
+> **Under active revival as `@dschz/solid-ag-grid`.** This fork is being modernized to target **AG Grid v36** and **Solid 2.x**, keeping the 100% SolidJS rendering architecture. The npm package is not yet published; the instructions below describe the legacy v31 release and will be rewritten. The legacy v31 source lives in `reference/solid-v31/` during the port.
 
 ## AG Grid Solid Component
 
