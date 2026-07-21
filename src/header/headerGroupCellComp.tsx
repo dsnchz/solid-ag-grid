@@ -1,36 +1,44 @@
 import type {
-  HeaderCellCtrl,
+  HeaderGroupCellCtrl,
   HeaderStyle,
-  IHeader,
-  IHeaderCellComp,
+  IHeaderGroupCellComp,
+  IHeaderGroupComp,
   UserCompDetails,
 } from "ag-grid-community";
-import { _EmptyBean } from "ag-grid-community";
-import { _addStylesToElement, _removeAriaSort, _setAriaSort, CssClassManager } from "ag-stack";
+import {
+  _applyHeaderWrapperHidden,
+  _applyHeaderWrapperMaxHeight,
+  _EmptyBean,
+} from "ag-grid-community";
+import { _addStylesToElement, _setDisplayed, CssClassManager } from "ag-stack";
 import { createEffect, createSignal, onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
 import { showJsComp } from "../core/jsComp";
 
-type HeaderCellCompProps = {
-  ctrl: HeaderCellCtrl;
+type HeaderGroupCellCompProps = {
+  readonly ctrl: HeaderGroupCellCtrl;
 };
 
-const HeaderCellComp = (props: HeaderCellCompProps) => {
+const HeaderGroupCellComp = (props: HeaderGroupCellCompProps) => {
   const { context } = useContext(BeansContext);
 
   // raw <For> item — stable identity, safe to read in refs (see the setComp verdict in
   // gridComp.tsx); untrack silences the top-level-read dev warning
   const ctrl = untrack(() => props.ctrl);
 
+  const [ariaExpanded, setAriaExpanded] = createSignal<"true" | "false" | undefined>();
   const [userCompDetails, setUserCompDetails] = createSignal<UserCompDetails>();
 
   let compBean: _EmptyBean | undefined;
   let eGui: HTMLDivElement | undefined;
   let eResize: HTMLDivElement | undefined;
   let eHeaderCompWrapper: HTMLDivElement | undefined;
-  let userComp: IHeader | undefined;
+  let userComp: IHeaderGroupComp | undefined;
 
+  // classes stay off the reactive graph (rowComp precedent) — and crucially, core features
+  // write to eGui.classList directly (AgManagedFocusFeature adds ag-focus-managed during
+  // setComp), which a wholesale reactive class binding would clobber
   const cssManager = new CssClassManager(() => eGui);
 
   // ctrl.setComp needs eResize/eHeaderCompWrapper, which are children of the root element and get
@@ -46,49 +54,36 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
 
     const eGuiEl = eGui;
     const eResizeEl = eResize;
+    const eHeaderCompWrapperEl = eHeaderCompWrapper;
     compBean = context.createBean(new _EmptyBean());
 
-    const refreshSelectAllGui = () => {
-      const selectAllGui = ctrl.getSelectAllGui();
-      if (selectAllGui) {
-        eResizeEl.insertAdjacentElement("afterend", selectAllGui);
-        compBean!.addDestroyFunc(() => selectAllGui.remove());
-      }
-    };
-
-    const compProxy: IHeaderCellComp = {
+    const compProxy: IHeaderGroupCellComp = {
       setWidth: (width: string) => {
         eGuiEl.style.width = width;
       },
       toggleCss: (name: string, on: boolean) => cssManager.toggleCss(name, on),
-      // user headerStyle keys arrive camelCased — Solid's style object applies keys verbatim via
-      // style.setProperty (kebab only), so camelCase keys would silently no-op through a style
-      // prop. _addStylesToElement hyphenates + handles !important, exactly like the vanilla
-      // header comp (T3.3 normalizer flag).
+      // user headerStyle keys arrive camelCased — _addStylesToElement hyphenates and applies
+      // via style.setProperty, exactly like the vanilla header comp (T3.3 normalizer flag)
       setUserStyles: (styles: HeaderStyle) => _addStylesToElement(eGuiEl, styles),
-      setAriaSort: (sort) => {
-        if (sort) {
-          _setAriaSort(eGuiEl, sort);
-        } else {
-          _removeAriaSort(eGuiEl);
-        }
-      },
+      setHeaderWrapperHidden: (hidden: boolean) =>
+        _applyHeaderWrapperHidden(eHeaderCompWrapperEl, hidden),
+      setHeaderWrapperMaxHeight: (value: number | null) =>
+        _applyHeaderWrapperMaxHeight(eHeaderCompWrapperEl, value),
       setUserCompDetails: (compDetails: UserCompDetails) => setUserCompDetails(compDetails),
+      // _setDisplayed for vanilla parity: aria-hidden is removed (not "false") when displayed
+      setResizableDisplayed: (displayed: boolean) => _setDisplayed(eResizeEl, displayed),
+      setAriaExpanded: (expanded: "true" | "false" | undefined) => setAriaExpanded(expanded),
       getUserCompInstance: () => userComp ?? undefined,
-      refreshSelectAllGui,
-      removeSelectAllGui: () => ctrl.getSelectAllGui()?.remove(),
     };
 
-    ctrl.setComp(compProxy, eGuiEl, eResizeEl, eHeaderCompWrapper, compBean);
-
-    refreshSelectAllGui();
+    ctrl.setComp(compProxy, eGuiEl, eResizeEl, eHeaderCompWrapperEl, compBean);
   };
 
   onCleanup(() => {
     compBean = context.destroyBean(compBean);
   });
 
-  // signal-keyed lifecycle of a non-Solid instance: mount/destroy the JS header component
+  // signal-keyed lifecycle of a non-Solid instance: mount/destroy the JS group header component
   // whenever the comp details change (React: useLayoutEffect over [userCompDetails])
   createEffect(
     () => userCompDetails(),
@@ -98,17 +93,17 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
       }),
   );
 
-  // reactive → core push: (re)attach the drag source once the header comp is in the DOM
+  // reactive → core push: (re)attach the drag source once the group header comp is in the DOM
   // (React: useEffect over [userCompDetails])
   createEffect(
     () => userCompDetails(),
     () => {
-      ctrl.setDragSource(eGui);
+      ctrl.setDragSource(eGui!);
     },
   );
 
-  // framework (Solid) header comps render inline; the imperative handle arrives iff the user
-  // component calls props.ref (no stateless/stateful split — all Solid comps are functions)
+  // framework (Solid) group header comps render inline; the imperative handle arrives iff the
+  // user component calls props.ref (no stateless/stateful split — all Solid comps are functions)
   const frameworkComp = () => {
     const compDetails = userCompDetails();
     if (!compDetails?.componentFromFramework) {
@@ -116,7 +111,10 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
     }
     const UserCompClass = compDetails.componentClass;
     return (
-      <UserCompClass {...compDetails.params} ref={(instance: IHeader) => (userComp = instance)} />
+      <UserCompClass
+        {...compDetails.params}
+        ref={(instance: IHeaderGroupComp) => (userComp = instance)}
+      />
     );
   };
 
@@ -126,17 +124,10 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
         eGui = el;
         setup();
       }}
-      class="ag-header-cell"
+      class="ag-header-group-cell"
       role="columnheader"
+      aria-expanded={ariaExpanded()}
     >
-      <div
-        ref={(el) => {
-          eResize = el;
-          setup();
-        }}
-        class="ag-header-cell-resize"
-        role="presentation"
-      />
       <div
         ref={(el) => {
           eHeaderCompWrapper = el;
@@ -147,8 +138,15 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
       >
         {frameworkComp()}
       </div>
+      <div
+        ref={(el) => {
+          eResize = el;
+          setup();
+        }}
+        class="ag-header-cell-resize"
+      />
     </div>
   );
 };
 
-export default HeaderCellComp;
+export default HeaderGroupCellComp;
