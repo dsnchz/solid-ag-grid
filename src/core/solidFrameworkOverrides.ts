@@ -1,6 +1,12 @@
 import { VanillaFrameworkOverrides } from "ag-grid-community";
 import type { FrameworkOverridesIncomingSource } from "ag-stack";
 
+// import cycle (overrides → detailCellRenderer → agGridSolid → overrides) is benign: the
+// bindings are only dereferenced when the map below is built, at grid boot — long after all
+// module bodies have evaluated (React inlines DetailCellRenderer to dodge this; we keep the
+// separate file per ARCHITECTURE §1)
+import DetailCellRenderer from "../cellRenderer/detailCellRenderer";
+import GroupCellRenderer from "../cellRenderer/groupCellRenderer";
 import { runWithoutFlush } from "./utils";
 
 export class SolidFrameworkOverrides extends VanillaFrameworkOverrides {
@@ -17,10 +23,9 @@ export class SolidFrameworkOverrides extends VanillaFrameworkOverrides {
   }
 
   private readonly frameworkComponents: { [name: string]: any } = {
-    // T3.10: GroupCellRenderer / DetailCellRenderer framework implementations
-    agGroupCellRenderer: undefined,
-    agGroupRowRenderer: undefined,
-    agDetailCellRenderer: undefined,
+    agGroupCellRenderer: GroupCellRenderer,
+    agGroupRowRenderer: GroupCellRenderer,
+    agDetailCellRenderer: DetailCellRenderer,
   };
 
   public override frameworkComponent(name: string): any {
