@@ -39,7 +39,7 @@ const mountVanilla = (options: GridOptions<CarRow>) => {
 const sortedClasses = (el: Element) => Array.from(el.classList).sort();
 
 describe("GridComp shell (browser)", () => {
-  it("renders wrapper > body > tab guards around the stub body, with the AG Grid comment", async () => {
+  it("renders wrapper > body > tab guards around the grid body, with the AG Grid comment", async () => {
     const { container, unmount } = render(() => (
       <AgGridSolid containerStyle={{ height: "300px" }} columnDefs={columnDefs} rowData={rowData} />
     ));
@@ -92,7 +92,7 @@ describe("GridComp shell (browser)", () => {
     expect(sBodyChildren[sBodyChildren.length - 1]!.className).toContain("ag-tab-guard-bottom");
 
     // the element between the guards is the grid body root in both
-    // (vanilla renders the full body; ours is the T3.3 stub — compare only the root class)
+    // (full-body DOM parity is covered in gridBodyHeader.browser.test.tsx)
     expect(vBody.querySelector(".ag-root")).not.toBeNull();
     expect(sBody.querySelector(".ag-root")).not.toBeNull();
     expect(sBody.querySelector(".ag-root")!.classList.contains("ag-unselectable")).toBe(

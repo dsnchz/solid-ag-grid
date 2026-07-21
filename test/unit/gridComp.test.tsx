@@ -34,7 +34,7 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     errorSpy.mockRestore();
   });
 
-  it("renders the grid shell: root wrapper > body > tab guards around the (stub) grid body", async () => {
+  it("renders the grid shell: root wrapper > body > tab guards around the grid body", async () => {
     const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rowData} />);
     await settle();
 
@@ -54,7 +54,7 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     expect(children[0]!.classList.contains("ag-tab-guard")).toBe(true);
     expect(children[0]!.classList.contains("ag-tab-guard-top")).toBe(true);
     expect(children[children.length - 1]!.classList.contains("ag-tab-guard-bottom")).toBe(true);
-    // stub grid body sits between the guards
+    // the grid body sits between the guards
     const agRoot = body.querySelector(".ag-root");
     expect(agRoot).not.toBeNull();
     expect(Array.from(body.children).indexOf(agRoot as HTMLElement)).toBe(1);
