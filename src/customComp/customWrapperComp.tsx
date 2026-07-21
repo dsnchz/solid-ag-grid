@@ -20,6 +20,9 @@ const CustomWrapperComp = (params: WrapperParams<Record<string, any>, any>) => {
   // SolidComponent) is re-passed as a static ref attribute below so the custom component's
   // `props.ref(handle)` call never reads the pushed-props signal.
   const initialProps = untrack(() => params.initialProps);
+  // same capture for setMethods: the context value object is read untracked inside the
+  // provider body — a direct `params.setMethods` there trips STRICT_READ_UNTRACKED
+  const setMethods = untrack(() => params.setMethods);
   const [props, setProps] = createSignal<Record<string, any>>(initialProps);
 
   // Effect classification (§5.1, bridge category 2): registers the prop-push callback with
@@ -31,7 +34,7 @@ const CustomWrapperComp = (params: WrapperParams<Record<string, any>, any>) => {
   });
 
   return (
-    <CustomContext value={{ setMethods: params.setMethods }}>
+    <CustomContext value={{ setMethods }}>
       <params.CustomComponentClass {...props()} ref={initialProps.ref} />
     </CustomContext>
   );

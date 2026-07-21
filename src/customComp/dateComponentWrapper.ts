@@ -1,0 +1,47 @@
+import type { IDate, IDateParams } from "ag-grid-community";
+
+import { CustomComponentWrapper } from "./customComponentWrapper";
+import type { CustomDateCallbacks, CustomDateProps } from "./interfaces";
+
+export class DateComponentWrapper
+  extends CustomComponentWrapper<IDateParams, CustomDateProps, CustomDateCallbacks>
+  implements IDate
+{
+  private date: Date | null = null;
+  private readonly onDateChange = (date: Date | null) => this.updateDate(date);
+
+  public getDate(): Date | null {
+    return this.date;
+  }
+
+  public setDate(date: Date | null): void {
+    this.date = date;
+    this.refreshProps();
+  }
+
+  public refresh(params: IDateParams): void {
+    this.sourceParams = params;
+    this.refreshProps();
+  }
+
+  protected override getOptionalMethods(): string[] {
+    return ["afterGuiAttached", "setInputPlaceholder", "setInputAriaLabel", "setDisabled"];
+  }
+
+  private updateDate(date: Date | null): void {
+    this.setDate(date);
+    // don't need to wait on `refreshProps` as not reliant on state maintained inside Solid
+    this.sourceParams.onDateChanged();
+  }
+
+  protected override getProps(): CustomDateProps {
+    const props = super.getProps();
+    // remove props in IDateParams but not BaseDateParams
+    delete (props as any).onDateChanged;
+    return {
+      ...props,
+      date: this.date,
+      onDateChange: this.onDateChange,
+    };
+  }
+}

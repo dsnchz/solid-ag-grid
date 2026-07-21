@@ -6,6 +6,18 @@ import type {
 } from "ag-grid-community";
 import { _getGridOption, BaseComponentWrapper } from "ag-grid-community";
 
+import { CellRendererComponentWrapper } from "../customComp/cellRendererComponentWrapper";
+import { CustomOverlayComponentWrapper } from "../customComp/customOverlayComponentWrapper";
+import { DateComponentWrapper } from "../customComp/dateComponentWrapper";
+import { DragAndDropImageComponentWrapper } from "../customComp/dragAndDropImageComponentWrapper";
+import { FilterComponentWrapper } from "../customComp/filterComponentWrapper";
+import { FilterDisplayComponentWrapper } from "../customComp/filterDisplayComponentWrapper";
+import { FloatingFilterComponentWrapper } from "../customComp/floatingFilterComponentWrapper";
+import { FloatingFilterDisplayComponentWrapper } from "../customComp/floatingFilterDisplayComponentWrapper";
+import { InnerHeaderComponentWrapper } from "../customComp/innerHeaderComponentWrapper";
+import { MenuItemComponentWrapper } from "../customComp/menuItemComponentWrapper";
+import { StatusPanelComponentWrapper } from "../customComp/statusPanelComponentWrapper";
+import { ToolPanelComponentWrapper } from "../customComp/toolPanelComponentWrapper";
 import { warnReactiveCustomComponents } from "../customComp/util";
 import type { PortalManager } from "./portalManager";
 import type { UserSolidComponent } from "./solidComponent";
@@ -34,24 +46,36 @@ export class SolidFrameworkComponentWrapper
     const gridOptions = this.gridOptions;
     const reactiveCustomComponents = _getGridOption(gridOptions, "reactiveCustomComponents");
     if (reactiveCustomComponents) {
-      // T3.7 plugs the reactive wrapper classes (CustomComponentWrapper subclasses) into these
-      // slots; until then every name falls through to the plain SolidComponent below.
       const getComponentClass = (
         propertyName: string,
       ): (new (...args: any[]) => WrappableInterface) | undefined => {
         switch (propertyName) {
-          case "filter": // T3.7: Filter(Display)ComponentWrapper (keyed on enableFilterHandlers)
-          case "floatingFilterComponent": // T3.7: FloatingFilter(Display)ComponentWrapper
-          case "dateComponent": // T3.7: DateComponentWrapper
-          case "dragAndDropImageComponent": // T3.7: DragAndDropImageComponentWrapper
-          case "loadingOverlayComponent": // T3.7: CustomOverlayComponentWrapper
-          case "noRowsOverlayComponent": // T3.7: CustomOverlayComponentWrapper
-          case "activeOverlay": // T3.7: CustomOverlayComponentWrapper
-          case "statusPanel": // T3.7: StatusPanelComponentWrapper
-          case "toolPanel": // T3.7: ToolPanelComponentWrapper
-          case "menuItem": // T3.7: MenuItemComponentWrapper
-          case "cellRenderer": // T3.7: CellRendererComponentWrapper
-          case "innerHeaderComponent": // T3.7: InnerHeaderComponentWrapper
+          case "filter":
+            return _getGridOption(gridOptions, "enableFilterHandlers")
+              ? FilterDisplayComponentWrapper
+              : FilterComponentWrapper;
+          case "floatingFilterComponent":
+            return _getGridOption(gridOptions, "enableFilterHandlers")
+              ? FloatingFilterDisplayComponentWrapper
+              : FloatingFilterComponentWrapper;
+          case "dateComponent":
+            return DateComponentWrapper;
+          case "dragAndDropImageComponent":
+            return DragAndDropImageComponentWrapper;
+          case "loadingOverlayComponent":
+          case "noRowsOverlayComponent":
+          case "activeOverlay":
+            return CustomOverlayComponentWrapper;
+          case "statusPanel":
+            return StatusPanelComponentWrapper;
+          case "toolPanel":
+            return ToolPanelComponentWrapper;
+          case "menuItem":
+            return MenuItemComponentWrapper;
+          case "cellRenderer":
+            return CellRendererComponentWrapper;
+          case "innerHeaderComponent":
+            return InnerHeaderComponentWrapper;
           default:
             return undefined;
         }
