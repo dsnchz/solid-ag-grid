@@ -2,9 +2,8 @@
 // grid features driven end-to-end by plain Solid components through the per-slot wrapper
 // classes, compared against vanilla createGrid where an equivalent exists.
 //
-// Floating filters in the header filter row are NOT covered here: HeaderFilterCellComp (the
-// consumer of FloatingFilterComponentProxy) lands in T3.9 — until then filter rows render
-// through a temporary HeaderCellComp cast. The proxy and wrapper classes ship unit-tested.
+// Floating filters in the header filter row are covered in headersComplete.browser.test.tsx
+// (T3.9): HeaderFilterCellComp consumes FloatingFilterComponentProxy there.
 // statusPanel/toolPanel/menuItem are enterprise-only slots: unit-tested with mocked
 // componentTypes, no browser parity (per the task's out-of-scope note).
 import { render } from "@solidjs/testing-library";

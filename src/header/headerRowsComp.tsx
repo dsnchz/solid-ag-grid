@@ -5,11 +5,11 @@ import { createEffect, createSignal, For, onSettled, untrack, useContext } from 
 import { BeansContext } from "../core/beansContext";
 import HeaderRowComp from "./headerRowComp";
 
-interface HeaderRowsCompProps {
+type HeaderRowsCompProps = {
   eGui: HTMLElement;
   eGridViewport: HTMLElement;
   setHeaderRowFocusableElements?: (elements: HTMLElement[]) => void;
-}
+};
 
 const HeaderRowsComp = (props: HeaderRowsCompProps) => {
   const { context } = useContext(BeansContext);

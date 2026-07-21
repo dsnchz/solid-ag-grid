@@ -6,10 +6,10 @@ import { createSignal, onCleanup, untrack, useContext } from "solid-js";
 import { BeansContext } from "../core/beansContext";
 import HeaderRowsComp from "./headerRowsComp";
 
-interface GridHeaderCompProps {
+type GridHeaderCompProps = {
   eTopSection: HTMLElement;
   eGridViewport: HTMLElement;
-}
+};
 
 const GridHeaderComp = (props: GridHeaderCompProps) => {
   const { context, environment } = useContext(BeansContext);

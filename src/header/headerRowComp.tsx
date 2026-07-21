@@ -1,6 +1,8 @@
 import type {
   AbstractHeaderCellCtrl,
   HeaderCellCtrl,
+  HeaderFilterCellCtrl,
+  HeaderGroupCellCtrl,
   HeaderRowCtrl,
   IHeaderRowComp,
   PinnedSectionWidthsCache,
@@ -17,6 +19,8 @@ import { createMemo, createSignal, For, onCleanup, untrack, useContext } from "s
 import { BeansContext } from "../core/beansContext";
 import { agFlush, getNextValueIfDifferent } from "../core/utils";
 import HeaderCellComp from "./headerCellComp";
+import HeaderFilterCellComp from "./headerFilterCellComp";
+import HeaderGroupCellComp from "./headerGroupCellComp";
 
 function getCellSectionSignature(ctrls: AbstractHeaderCellCtrl[], isPrint: boolean): string {
   if (isPrint) {
@@ -31,10 +35,10 @@ function getCellSectionSignature(ctrls: AbstractHeaderCellCtrl[], isPrint: boole
     .join("|");
 }
 
-interface HeaderRowCompProps {
+type HeaderRowCompProps = {
   ctrl: HeaderRowCtrl;
   setGuiRef?: (eGui: HTMLDivElement | null) => void;
-}
+};
 
 const HeaderRowComp = (props: HeaderRowCompProps) => {
   const beans = useContext(BeansContext);
@@ -152,12 +156,12 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
     );
   });
 
-  // TEMPORARY (T3.9): ctrl.type 'group' / 'filter' rows also render the default HeaderCellComp
-  // (cast) until HeaderGroupCellComp / HeaderFilterCellComp are ported
   const createCellJsx = (cellCtrl: AbstractHeaderCellCtrl) => {
     switch (ctrl.type) {
       case "group":
+        return <HeaderGroupCellComp ctrl={cellCtrl as HeaderGroupCellCtrl} />;
       case "filter":
+        return <HeaderFilterCellComp ctrl={cellCtrl as HeaderFilterCellCtrl} />;
       default:
         return <HeaderCellComp ctrl={cellCtrl as HeaderCellCtrl} />;
     }
