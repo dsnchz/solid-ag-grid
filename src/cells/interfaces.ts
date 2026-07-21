@@ -1,5 +1,7 @@
 import type { UserCompDetails } from "ag-grid-community";
 
+import type { CellEditorComponentProxy } from "../customComp/cellEditorComponentProxy";
+
 export interface RenderDetails {
   compDetails: UserCompDetails | undefined;
   value?: any;
@@ -10,7 +12,9 @@ export interface EditDetails {
   compDetails: UserCompDetails;
   popup?: boolean;
   popupPosition?: "over" | "under";
-  // T3.8: compProxy?: CellEditorComponentProxy (reactive custom editor integration)
+  /** present when `componentFromFramework && reactiveCustomComponents` — the ICellEditor the
+   * grid talks to while the user's Solid editor renders inline (not portal-based) */
+  compProxy?: CellEditorComponentProxy;
 }
 
 export enum CellCompState {
