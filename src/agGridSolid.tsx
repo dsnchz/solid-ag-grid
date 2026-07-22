@@ -1,18 +1,11 @@
 import type { JSX } from "@solidjs/web";
 import { isServer } from "@solidjs/web";
-import type { Context, GridApi, GridOptions, GridParams, Module } from "ag-grid-community";
-import {
-  _combineAttributesAndGridOptions,
-  _findEnterpriseCoreModule,
-  _processOnChange,
-  GridCoreCreator,
-} from "ag-grid-community";
+import type { Context, GridApi, GridOptions, Module } from "ag-grid-community";
+import { _processOnChange } from "ag-grid-community";
 import {
   createEffect,
   createMemo,
   createSignal,
-  latest,
-  NotReadyError,
   onCleanup,
   onSettled,
   Show,
@@ -21,10 +14,11 @@ import {
 } from "solid-js";
 
 import { LicenseContext, ModulesContext } from "./agGridProvider";
+import { extractGridPropertyChanges, readPropIfReady, snapshotGridProps } from "./core/asyncProps";
+import { bootGrid } from "./core/gridBoot";
 import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
-import { RenderStatusService } from "./core/renderStatusService";
-import { SolidFrameworkComponentWrapper } from "./core/solidFrameworkComponentWrapper";
+import { createReadyQueue } from "./core/readyQueue";
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
 import GridComp from "./gridComp";
 
@@ -66,42 +60,6 @@ const solidPropsNotGridOptions: SolidCompProps = {
 };
 const excludeSolidCompProps = new Set(Object.keys(solidPropsNotGridOptions));
 
-// ASYNC GRID-OPTION PROPS VERDICT (ARCHITECTURE.md Open question 9, resolved T3.4):
-// PER-KEY ISOLATION, async rowData as a zero-ceremony feature. Solid 2.0 users will pass
-// async-sourced props (`rowData={data()}` from an async createMemo); a not-ready read throws
-// NotReadyError. If we let it propagate, ONE pending prop suspends the whole prop-diff compute
-// and stalls ALL prop-change application (footgun). Instead every prop key is read through a
-// per-key try/catch: not-ready keys are simply omitted from the snapshot — at grid creation
-// that means `rowData: undefined` (the grid shows its loading overlay, exactly the UX async
-// data wants), and in the prop-diff compute the tracked read has already subscribed us, so the
-// compute re-runs when the value resolves and the key diffs in as a normal grid-option change.
-// Evidence: test/browser/rowsCells.browser.test.tsx ("async rowData").
-const isNotReadyError = (e: unknown): boolean =>
-  e instanceof NotReadyError ||
-  // dev-mode untracked pending reads (grid creation runs in onSettled/untrack) throw a plain
-  // Error carrying this diagnostic code instead of NotReadyError
-  (e instanceof Error && e.message.includes("PENDING_ASYNC_UNTRACKED_READ"));
-
-/** Reads props[key], treating a not-ready async prop as "absent" (per-key isolation). */
-const readPropIfReady = (
-  props: { [key: string]: any },
-  key: string,
-  target: { [key: string]: any },
-  // creation-time reads (inside onSettled) go through latest(): it bypasses the pending-link
-  // machinery, so a pending async prop neither logs PENDING_ASYNC_FORBIDDEN_SCOPE nor links
-  // the boot computation for a re-run (the gridCreated guard stays as backstop). The prop-diff
-  // effect keeps normal tracked reads — there the subscription IS the resolve mechanism.
-  viaLatest = false,
-): void => {
-  try {
-    target[key] = viaLatest ? latest(() => props[key]) : props[key];
-  } catch (e) {
-    if (!isNotReadyError(e)) {
-      throw e;
-    }
-  }
-};
-
 export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
@@ -117,8 +75,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let api: GridApi<TData> | undefined;
   let frameworkOverrides: SolidFrameworkOverrides | undefined;
   const destroyFuncs: (() => void)[] = [];
-  const whenReadyFuncs: (() => void)[] = [];
-  let ready = false;
+  const readyQueue = createReadyQueue(() => frameworkOverrides?.shouldQueueUpdates() ?? false);
 
   const [context, setContext] = createSignal<Context>();
 
@@ -135,18 +92,62 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   });
 
   onCleanup(() => {
-    ready = false;
+    readyQueue.reset();
     for (const f of destroyFuncs) {
       f();
     }
     destroyFuncs.length = 0;
   });
 
-  // grid creation must run exactly once: reading a pending async prop inside onSettled links
-  // the onSettled computation to the async node (dev warns PENDING_ASYNC_FORBIDDEN_SCOPE), so
-  // onSettled RE-RUNS when the value resolves — without this guard a second grid would boot on
-  // the same elements (found via the Open question 9 browser test)
+  // grid creation must run exactly once. The guard was once load-bearing: boot originally ran
+  // directly inside onSettled, whose caught pending async prop reads linked the computation
+  // (dev: PENDING_ASYNC_FORBIDDEN_SCOPE) so it RE-RAN on resolve and booted a second grid.
+  // Since boot moved one microtask off onSettled's scope, no reads remain inside onSettled and
+  // nothing links it — today the guard is a defensive backstop (e.g. against future 2.0-beta
+  // changes to onSettled's re-run semantics), not a fix for an active re-run path.
   let gridCreated = false;
+
+  // runs once, in a microtask off onSettled and under untrack (see the onSettled below):
+  // resolve the reactive inputs (contexts, prop snapshot), then hand off to bootGrid
+  const createGrid = () => {
+    const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
+    const licenseKey = licenseKeyFromContext();
+
+    // per-key isolation for async props (Open question 9 verdict — see src/core/asyncProps.ts):
+    // not-ready keys are absent from the creation snapshot and arrive later via the prop-diff
+    // effect
+    const initialProps = snapshotGridProps(props, excludeSolidCompProps, true);
+    const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
+    readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
+
+    frameworkOverrides = new SolidFrameworkOverrides(
+      readyQueue.processQueuedUpdates,
+      usesAgGridProvider,
+    );
+
+    api = bootGrid<TData>({
+      eOutermost,
+      eInnermost,
+      modules,
+      licenseKey,
+      initialProps,
+      gridOptions: gridOptionsHolder.gridOptions,
+      portalManager,
+      frameworkOverrides,
+      drainAndMarkReady: readyQueue.drainAndMarkReady,
+      addDestroyFunc: (func) => destroyFuncs.push(func),
+      setContext,
+      // grid-core callback (untracked): fires once the UI is initialised, exposing the api ref
+      onGridUiReady: () => {
+        if (api) {
+          props.ref?.({ api });
+        }
+      },
+    });
+    destroyFuncs.push(() => {
+      api = undefined;
+    });
+  };
 
   // grid creation needs both styled-root layer elements attached to the document (the core
   // measures/installs styles against them), so it runs in onSettled rather than the ref
@@ -164,151 +165,20 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     }
     // creation runs one microtask off onSettled's scope: reading a pending async prop INSIDE
     // onSettled logs PENDING_ASYNC_FORBIDDEN_SCOPE (dev) even through latest(), because the
-    // warning fires at read time in the forbidden scope. In a plain microtask the same read
-    // throws the catchable untracked-read error instead (handled per-key) — zero console
-    // noise on the async-rowData boot path, contract unchanged (pinned by browser tests).
-    queueMicrotask(() => {
-      untrack(() => {
-        const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
-        const licenseKey = licenseKeyFromContext();
-        if (licenseKey) {
-          // find the EnterpriseCore module which implements _ModuleWithLicenseManager; the lookup
-          // runs over the merged list because the enterprise bundle may arrive via the `modules`
-          // prop while the key arrives via the provider
-          _findEnterpriseCoreModule(modules)?.setLicenseKey(licenseKey);
-        }
-
-        destroyFuncs.push(() => {
-          portalManager.destroy();
-        });
-
-        // per-key isolation for async props (see the Open question 9 verdict above): not-ready
-        // keys are absent from the creation snapshot and arrive later via the prop-diff effect
-        const initialProps: { [key: string]: any } = {};
-        for (const key of Object.keys(props)) {
-          if (!excludeSolidCompProps.has(key)) {
-            readPropIfReady(props, key, initialProps, true);
-          }
-        }
-        const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
-        readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
-
-        const mergedGridOps = _combineAttributesAndGridOptions(
-          gridOptionsHolder.gridOptions,
-          initialProps,
-          Object.keys(initialProps),
-        );
-
-        const processQueuedUpdates = () => {
-          if (ready) {
-            const getFn = () =>
-              frameworkOverrides?.shouldQueueUpdates() ? undefined : whenReadyFuncs.shift();
-            let fn = getFn();
-            while (fn) {
-              fn();
-              fn = getFn();
-            }
-          }
-        };
-
-        frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, usesAgGridProvider);
-        const renderStatus = new RenderStatusService();
-        const gridParams: GridParams = {
-          providedBeanInstances: {
-            frameworkCompWrapper: new SolidFrameworkComponentWrapper(portalManager, mergedGridOps),
-            renderStatus,
-          },
-          modules,
-          frameworkOverrides,
-        };
-
-        const createUiCallback = (ctx: Context) => {
-          setContext(ctx);
-          ctx.createBean(renderStatus);
-
-          destroyFuncs.push(() => {
-            ctx.destroy();
-          });
-
-          // because Solid 2.0 renders async, we need to wait for the UI to be initialised before exposing the API's
-          ctx.getBean("ctrlsSvc").whenReady(
-            {
-              addDestroyFunc: (func) => {
-                destroyFuncs.push(func);
-              },
-            },
-            // eslint-disable-next-line solid/reactivity -- grid-core callback, intentionally untracked
-            () => {
-              if (ctx.isDestroyed()) {
-                return;
-              }
-
-              if (api) {
-                props.ref?.({ api });
-              }
-            },
-          );
-        };
-
-        // this callback adds to ctrlsSvc.whenReady(), just like above, however because whenReady() executes
-        // funcs in the order they were received, we know adding items here will be AFTER the grid has set columns
-        // and data. this is because GridCoreCreator sets these between calling createUiCallback and acceptChangesCallback
-        const acceptChangesCallback = (ctx: Context) => {
-          ctx.getBean("ctrlsSvc").whenReady(
-            {
-              addDestroyFunc: (func) => {
-                destroyFuncs.push(func);
-              },
-            },
-            () => {
-              for (const f of whenReadyFuncs) {
-                f();
-              }
-              whenReadyFuncs.length = 0;
-              ready = true;
-            },
-          );
-        };
-
-        const gridCoreCreator = new GridCoreCreator();
-        api = gridCoreCreator.create(
-          eOutermost,
-          eInnermost,
-          mergedGridOps,
-          createUiCallback,
-          acceptChangesCallback,
-          gridParams,
-        ) as GridApi<TData>;
-        destroyFuncs.push(() => {
-          api = undefined;
-        });
-      });
-    });
+    // warning fires at read time in the forbidden scope. In a plain microtask a pending read
+    // either returns undefined (latest() on a never-resolved source) or throws a not-ready
+    // error — the per-key snapshot handles both as "absent" — so the async-rowData boot path
+    // produces zero console noise, contract unchanged (pinned by browser tests).
+    queueMicrotask(() => untrack(createGrid));
   });
-
-  const processWhenReady = (func: () => void) => {
-    if (ready && !frameworkOverrides?.shouldQueueUpdates()) {
-      func();
-    } else {
-      whenReadyFuncs.push(func);
-    }
-  };
 
   createEffect(
     // compute: read every grid-option prop key so each one is tracked, and return the snapshot.
-    // Not-ready async keys are omitted per-key (Open question 9 verdict above): the tracked
-    // read already subscribed this compute, so it re-runs — and the key diffs in — on resolve.
-    () => {
-      const snapshot: { [key: string]: any } = {};
-      for (const propKey of Object.keys(props)) {
-        if (excludeSolidCompProps.has(propKey)) {
-          continue;
-        }
-        readPropIfReady(props, propKey, snapshot);
-      }
-      return snapshot;
-    },
-    // apply: diff against the previous snapshot and route the changes through processWhenReady
+    // Not-ready async keys are omitted per-key (Open question 9 verdict — see
+    // src/core/asyncProps.ts): the tracked read already subscribed this compute, so it re-runs
+    // — and the key diffs in — on resolve.
+    () => snapshotGridProps(props, excludeSolidCompProps),
+    // apply: diff against the previous snapshot and route the changes through the ready queue
     (nextProps, prevProps) => {
       if (!prevProps) {
         // first run: initial props were already handed to GridCoreCreator
@@ -318,7 +188,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       if (Object.keys(changes).length === 0) {
         return;
       }
-      processWhenReady(() => {
+      readyQueue.processWhenReady(() => {
         if (api) {
           _processOnChange(changes, api);
         }
@@ -344,20 +214,5 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     </div>
   );
 };
-
-function extractGridPropertyChanges(
-  prevProps: { [key: string]: any },
-  nextProps: { [key: string]: any },
-): { [p: string]: any } {
-  const changes: { [p: string]: any } = {};
-  for (const propKey of Object.keys(nextProps)) {
-    const propValue = nextProps[propKey];
-    if (prevProps[propKey] !== propValue) {
-      changes[propKey] = propValue;
-    }
-  }
-
-  return changes;
-}
 
 export default AgGridSolid;
