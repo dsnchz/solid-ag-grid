@@ -27,14 +27,14 @@ import {
 // store reorders (transactions cannot express moves; a pure reorder diffs as no change and
 // the grid keeps its own order — use grid sorting).
 
-// CLEAN-FORM DISCIPLINE (solid-js 2.0.0-beta.21): every plain read in this module uses the
-// WHOLE-ARRAY form — `plainRows(store)` — never the per-item form. On an optimistic view
-// over a base store, `snapshot(view[i])` (item accessed through the view first) returns the
-// base store's LIVE ROW PROXY (minimal repro reported upstream by Daniel, Solid Discord);
-// `snapshot(view)` then indexing is plain. Payload capture is therefore batched: one array
-// snapshot per structural pass / per update flush — which is also cheaper than per-row
-// snapshots. The never-proxy assertions in test/unit/rowStoreAdapter.test.tsx and the
-// flagship test's console spy pin plainness of everything crossing the grid boundary.
+// CLEAN-FORM DISCIPLINE: every plain read in this module uses the WHOLE-ARRAY form —
+// `plainRows(store)` — with payload capture batched to one array snapshot per structural
+// pass / per update flush (cheaper than per-row snapshots). Historical note: on
+// solid-js ≤ 2.0.0-beta.21, the per-item form `snapshot(view[i])` on a derived store view
+// leaked the base store's live row proxy — reported by Daniel (Solid Discord) and fixed
+// upstream same-day in solidjs/solid@a5fe9fb (lands beta.22+). The batched whole-array
+// design is kept on its own merits; the never-proxy assertions in
+// test/unit/rowStoreAdapter.test.tsx and the flagship console spy remain the detectors.
 const plainRows = <TData>(store: readonly TData[]): TData[] =>
   // untrack: deliberately non-subscribing read (payload capture, not a dependency)
   untrack(() => snapshot(store)) as TData[];
