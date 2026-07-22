@@ -9,6 +9,7 @@ import {
   onCleanup,
   onSettled,
   Show,
+  snapshot,
   untrack,
   useContext,
 } from "solid-js";
@@ -20,7 +21,7 @@ import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
 import { createReadyQueue } from "./core/readyQueue";
 import type { RowStoreAdapter } from "./core/rowStoreAdapter";
-import { createRowStoreAdapter, plainSnapshot } from "./core/rowStoreAdapter";
+import { createRowStoreAdapter } from "./core/rowStoreAdapter";
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
 import GridComp from "./gridComp";
 
@@ -176,7 +177,10 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
       // structural diff starts from, so store mutations landing before the grid is ready
       // replay as queued transactions with no double-apply. Degraded mode (missing getRowId,
       // no adapter) still shows the initial snapshot, statically.
-      initialProps.rowData = rowStoreAdapter ? rowStoreAdapter.seedRows : plainSnapshot(rowStore);
+      // degraded mode (no getRowId): static seed via the clean whole-array snapshot form
+      initialProps.rowData = rowStoreAdapter
+        ? rowStoreAdapter.seedRows
+        : untrack(() => snapshot(rowStore));
     }
 
     frameworkOverrides = new SolidFrameworkOverrides(

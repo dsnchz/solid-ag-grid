@@ -1,6 +1,5 @@
 import type { GridApi } from "ag-grid-community";
 import {
-  $PROXY,
   $TRACK,
   createEffect,
   createRoot,
@@ -28,31 +27,17 @@ import {
 // store reorders (transactions cannot express moves; a pure reorder diffs as no change and
 // the grid keeps its own order — use grid sorting).
 
-// PROXY-LEAK GUARD — CONFIRMED, MINIMAL 3-LINE REPRO (solid-js 2.0.0-beta.21):
-//   const [base] = createStore([{ id: "a" }]);
-//   const [view] = createOptimisticStore(base);
-//   snapshot(view[0])  // ← returns base[0] — the BASE STORE'S LIVE ROW PROXY, not plain data
-// The per-item path is the trigger: snapshot(view)[0] (whole array first) is plain, but any
-// row accessed THROUGH the view (view[i], .map, deep handles — exactly this adapter's shape)
-// snapshots to the inner proxy: the view row node's STORE_VALUE is the base row proxy and
-// snapshotImpl's no-override fast path returns it verbatim (top-level only — child unwraps
-// copy). Evidence both ways: removing this guard turns the flagship optimistic browser test
-// red with 18+ core-read STRICT_READ_UNTRACKED warnings. Re-snapshot until no $PROXY
-// remains; untrack marks these reads deliberately non-subscribing. Pinned by never-proxy
-// assertions in test/unit/rowStoreAdapter.test.tsx + the flagship console spy. Reported
-// upstream by Daniel (Solid Discord) — remove when fixed.
-export const plainSnapshot = <V>(value: V): V =>
-  untrack(() => {
-    let out: unknown = snapshot(value);
-    while (
-      out !== null &&
-      typeof out === "object" &&
-      (out as { readonly [key: symbol]: unknown })[$PROXY] !== undefined
-    ) {
-      out = snapshot(out);
-    }
-    return out as V;
-  });
+// CLEAN-FORM DISCIPLINE (solid-js 2.0.0-beta.21): every plain read in this module uses the
+// WHOLE-ARRAY form — `plainRows(store)` — never the per-item form. On an optimistic view
+// over a base store, `snapshot(view[i])` (item accessed through the view first) returns the
+// base store's LIVE ROW PROXY (minimal repro reported upstream by Daniel, Solid Discord);
+// `snapshot(view)` then indexing is plain. Payload capture is therefore batched: one array
+// snapshot per structural pass / per update flush — which is also cheaper than per-row
+// snapshots. The never-proxy assertions in test/unit/rowStoreAdapter.test.tsx and the
+// flagship test's console spy pin plainness of everything crossing the grid boundary.
+const plainRows = <TData>(store: readonly TData[]): TData[] =>
+  // untrack: deliberately non-subscribing read (payload capture, not a dependency)
+  untrack(() => snapshot(store)) as TData[];
 
 export type RowStoreAdapterParams<TData> = {
   /** The user's array store proxy. The adapter only reads it — never writes. */
@@ -99,7 +84,9 @@ export const createRowStoreAdapter = <TData>(
   // machinery state, not rendering state — nothing derives from it, and the structural apply
   // needs read-after-write immediacy within a single flush.
   const entries = new Map<string, RowEntry<TData>>();
-  const pendingUpdates = new Map<string, TData>();
+  // field projections only mark keys dirty; payloads are captured at flush time from one
+  // whole-array snapshot (clean form + one walk per batch; last-write-wins as before)
+  const dirtyKeys = new Set<string>();
   let updateFlushQueued = false;
   let disposed = false;
 
@@ -107,7 +94,7 @@ export const createRowStoreAdapter = <TData>(
   // the structural effect's apply phase, and must not inherit that transient scope
   const owner = getOwner();
 
-  const seedRows = plainSnapshot(store) as TData[];
+  const seedRows = plainRows(store);
   for (const data of seedRows) {
     entries.set(getRowKey(data), { snap: data, dispose: null });
   }
@@ -118,7 +105,7 @@ export const createRowStoreAdapter = <TData>(
       entry.dispose?.();
     }
     entries.clear();
-    pendingUpdates.clear();
+    dirtyKeys.clear();
   });
 
   // PRE-READY TRANSACTIONS ARE HAZARDOUS, NOT MERELY DROPPED — EMPIRICAL VERDICT (jsdom
@@ -147,16 +134,23 @@ export const createRowStoreAdapter = <TData>(
   const flushUpdates = (): void => {
     updateFlushQueued = false;
     if (disposed) {
-      pendingUpdates.clear();
+      dirtyKeys.clear();
       return;
     }
+    // one whole-array snapshot per flush: payload capture in the clean form (see module note)
+    const rows = plainRows(store);
+    const byKey = new Map<string, TData>();
+    for (const data of rows) {
+      byKey.set(getRowKey(data), data);
+    }
     const update: TData[] = [];
-    for (const [key, data] of pendingUpdates) {
-      if (entries.has(key)) {
+    for (const key of dirtyKeys) {
+      const data = byKey.get(key);
+      if (data !== undefined && entries.has(key)) {
         update.push(data);
       }
     }
-    pendingUpdates.clear();
+    dirtyKeys.clear();
     if (update.length > 0) {
       emit((api) => api.applyTransactionAsync({ update }));
     }
@@ -172,21 +166,21 @@ export const createRowStoreAdapter = <TData>(
   const createRowProjection = (key: string, row: TData): (() => void) =>
     runWithOwner(owner, () =>
       createRoot((dispose) => {
-        // CATEGORY 1 EFFECT (§5.1: reactive → core push). Field projection: deep(row) yields a
-        // plain deep copy AND subscribes to every nested property of THIS row only (store path
-        // granularity) — the copy is the snapshot that crosses the grid boundary (§7.8: never
-        // proxies; the grid owns the data it is handed).
+        // CATEGORY 1 EFFECT (§5.1: reactive → core push). Field projection: deep(row)
+        // subscribes to every nested property of THIS row only (store path granularity).
+        // Its return value is used solely for the first-run check — the payload that crosses
+        // the grid boundary is captured at flush time via the clean whole-array form.
         createEffect(
           () => deep(row as TData & object),
-          (plain, prev) => {
+          (_plain, prev) => {
             if (prev === undefined) {
               // first run only establishes tracking — the add transaction (or boot seed)
               // already carried this exact data
               return;
             }
-            // deep() has the same top-level proxy-leak fast path as snapshot() (verdict on
-            // plainSnapshot above) — never let a proxy cross the boundary
-            pendingUpdates.set(key, plainSnapshot(plain));
+            // the compute's deep(row) is subscription only — payload capture happens at
+            // flush time from a whole-array snapshot (clean form, see module note)
+            dirtyKeys.add(key);
             scheduleUpdateFlush();
           },
         );
@@ -205,13 +199,14 @@ export const createRowStoreAdapter = <TData>(
       return store.map((row) => row);
     },
     (rows) => {
+      // one whole-array snapshot per structural pass (clean form; indexes align with the
+      // compute's rows — both read within the same flush)
+      const plain = plainRows(store);
       const nextKeys = new Set<string>();
       const adds: { readonly data: TData; readonly index: number }[] = [];
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i] as TData;
-        // plainSnapshot reads through the store's overlay layers without subscribing — it
-        // sees optimistic values exactly as the user does (guard rationale: verdict above)
-        const data = plainSnapshot(row);
+        const data = plain[i] as TData;
         const key = getRowKey(data);
         nextKeys.add(key);
         const entry = entries.get(key);
@@ -234,7 +229,7 @@ export const createRowStoreAdapter = <TData>(
           entry.dispose?.();
           entries.delete(key);
           // a same-flush field write on a removed row must not survive as an async update
-          pendingUpdates.delete(key);
+          dirtyKeys.delete(key);
         }
       }
 
