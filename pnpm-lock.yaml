@@ -15,6 +15,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@9.39.5(jiti@2.7.0))
+      '@solid-primitives/resize-observer':
+        specifier: 4.0.0-next.2
+        version: 4.0.0-next.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
       '@solidjs/testing-library':
         specifier: 1.0.0-beta.2
         version: 1.0.0-beta.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
@@ -621,6 +624,36 @@ packages:
     resolution: {integrity: sha512-BJnIkJWrocv4vCcayxuAsu/oEtqyJ1o8t0BPm6uvrmjn/AkUF2YR6Zx4TpVrjkHRKik0/1L5fP8OyqS15f+fKQ==}
     cpu: [x64]
     os: [win32]
+
+  '@solid-primitives/event-listener@3.0.0-next.2':
+    resolution: {integrity: sha512-8qW6p0oNQmz6Mu68obiXsKkqaIFAGteWlV763UPgBurqqnWY5sFfn2vfikyX8ElaWbUvf1kNy/KYs+y3f1R9KA==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.20
+      solid-js: ^2.0.0-beta.20
+
+  '@solid-primitives/resize-observer@4.0.0-next.2':
+    resolution: {integrity: sha512-2PkBsKh2GDJbew9fjsTtRhmzF7RBK1RQQMa1oWYWYAX1/X8xeleNOLlVJ5Ro04h562UQFzq7ZJO6Aig8735mjA==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.20
+      solid-js: ^2.0.0-beta.20
+
+  '@solid-primitives/rootless@2.0.0-next.1':
+    resolution: {integrity: sha512-GzrsmIMYOxn7XBoFjq8Jl34qrGFlUiK63hLdFZb3xEFn2iIJf7xDzYdPN0WHYkja+Cd1i/7n8oEblQExBoEW+Q==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.20
+      solid-js: ^2.0.0-beta.20
+
+  '@solid-primitives/static-store@1.0.0-next.1':
+    resolution: {integrity: sha512-6hqw40Smdz77oEtU+ehKdJEbI+/v5ml+ZLK/NAuZ5FmK7Tr2A9TD5gpy4NIdS6M3CPoLhvwd746IwHUhPQ3h0g==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.20
+      solid-js: ^2.0.0-beta.20
+
+  '@solid-primitives/utils@7.0.0-next.3':
+    resolution: {integrity: sha512-6jBI0CT7QanKBqQxqlfk53Q0MyqyUf5td3guI52V2BUXAOtDByjoCsOEk28rxCC1PxtnBZUX6Lx3WWZCFVcLZg==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.20
+      solid-js: ^2.0.0-beta.20
 
   '@solidjs/signals@2.0.0-beta.21':
     resolution: {integrity: sha512-dVBzBxWVvO3SubC1f8KZLeVqkiIp5TNNosCEbamggsOyLkfaWTWgOkRi7J/q6G9u4o1+dZ8LhqK70TJmimiZ9g==}
@@ -2221,6 +2254,38 @@ snapshots:
 
   '@solid-checker/binding-win32-x64-msvc@0.2.2':
     optional: true
+
+  '@solid-primitives/event-listener@3.0.0-next.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.3(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solidjs/web': 2.0.0-beta.21(solid-js@2.0.0-beta.21)
+      solid-js: 2.0.0-beta.21
+
+  '@solid-primitives/resize-observer@4.0.0-next.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
+    dependencies:
+      '@solid-primitives/event-listener': 3.0.0-next.2(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solid-primitives/rootless': 2.0.0-next.1(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solid-primitives/static-store': 1.0.0-next.1(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solid-primitives/utils': 7.0.0-next.3(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solidjs/web': 2.0.0-beta.21(solid-js@2.0.0-beta.21)
+      solid-js: 2.0.0-beta.21
+
+  '@solid-primitives/rootless@2.0.0-next.1(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.3(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solidjs/web': 2.0.0-beta.21(solid-js@2.0.0-beta.21)
+      solid-js: 2.0.0-beta.21
+
+  '@solid-primitives/static-store@1.0.0-next.1(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.3(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)
+      '@solidjs/web': 2.0.0-beta.21(solid-js@2.0.0-beta.21)
+      solid-js: 2.0.0-beta.21
+
+  '@solid-primitives/utils@7.0.0-next.3(@solidjs/web@2.0.0-beta.21(solid-js@2.0.0-beta.21))(solid-js@2.0.0-beta.21)':
+    dependencies:
+      '@solidjs/web': 2.0.0-beta.21(solid-js@2.0.0-beta.21)
+      solid-js: 2.0.0-beta.21
 
   '@solidjs/signals@2.0.0-beta.21': {}
 
