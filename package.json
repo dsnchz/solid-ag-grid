@@ -19,6 +19,11 @@
   "author": "Daniel Sanchez <dsanc89@icloud.com>",
   "contributors": [
     {
+      "name": "Daniel Sanchez",
+      "email": "dsanc89@icloud.com",
+      "url": "https://github.com/dsnchz"
+    },
+    {
       "name": "Niall Crosby",
       "email": "niall.crosby@ag-grid.com"
     },
