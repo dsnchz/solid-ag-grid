@@ -14,6 +14,6 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["src", "dev", "test", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src", "dev-playground", "test", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["reference", "tmp", "dist", "node_modules"]
 }

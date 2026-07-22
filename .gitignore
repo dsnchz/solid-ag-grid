@@ -135,5 +135,5 @@ tmp/
 .agent/
 
 # build outputs
-dev/dist/
+dev-playground/dist/
 *.tgz
