@@ -69,7 +69,7 @@ const rows = createMemo(() => fetchRows(query())); // async — returns a Promis
 
 When an already-loaded async prop goes pending _again_ (a refetch), the pending key is omitted from the change snapshot, so **no change is applied**: the grid keeps the previous rows, with no overlay flash and no blanking, until the new data resolves. This is pinned by a browser test and treated as a public contract, not an accident.
 
-Need a refetch _indicator_? Drive it yourself — `loading={isPending(() => rows())}` shows the overlay during revalidation too, or render your own indicator outside the grid.
+Need a refetch _indicator_? Drive it yourself — `loading={isPending(() => rows())}` shows the overlay during revalidation too (safe in the grid prop position — the grid guards its own reads). Rendering your own indicator? Wrap it in a `<Loading>` boundary: `isPending` **rethrows while the source is uninitialized**, and an unguarded read outside a boundary defers the entire root mount until the fetch settles (`ASYNC_OUTSIDE_LOADING_BOUNDARY`).
 
 ### Async cell renderers
 
@@ -194,3 +194,20 @@ Internally, the component reads every grid-option prop inside one diffing comput
 
 - [SSR guide](./ssr.md)
 - [README — What Solid rendering buys you](../README.md#what-solid-rendering-buys-you)
+
+### Footgun 8: `onCleanup` inside `onSettled` halts the reactive system
+
+Solid 1.x muscle memory says `onMount(() => { ...; onCleanup(teardown) })`. In
+Solid 2.0, calling `onCleanup` inside `onSettled` throws
+`CLEANUP_IN_FORBIDDEN_SCOPE` — and halts reactivity for the whole app. **Return
+the cleanup function from `onSettled` instead:**
+
+```tsx
+onSettled(() => {
+  const id = setInterval(tick, 1000);
+  return () => clearInterval(id); // ✅ the 2.0 contract
+});
+```
+
+This applies to any component in your app, not just grid components — but grid
+apps hit it often (intervals feeding rowData, resize listeners around grids).
