@@ -75,7 +75,7 @@
     "@eslint/js": "^10.0.1",
     "@solid-primitives/resize-observer": "4.0.0-next.2",
     "@solidjs/testing-library": "1.0.0-beta.2",
-    "@solidjs/web": "2.0.0-beta.21",
+    "@solidjs/web": "2.0.0-beta.22",
     "@types/node": "^26.1.1",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
@@ -90,11 +90,11 @@
     "oxfmt": "^0.59.0",
     "playwright": "^1.61.1",
     "solid-checker": "0.2.2",
-    "solid-js": "2.0.0-beta.21",
+    "solid-js": "2.0.0-beta.22",
     "typescript": "^7.0.2",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
-    "vite-plugin-solid": "3.0.0-next.14",
+    "vite-plugin-solid": "3.0.0-next.15",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
