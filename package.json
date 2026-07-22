@@ -1,6 +1,6 @@
 {
   "name": "@dschz/solid-ag-grid",
-  "version": "36.0.0-next.0",
+  "version": "36.0.0-next.1",
   "description": "AG Grid with 100% SolidJS rendering — Solid 2.x, AG Grid v36",
   "keywords": [
     "ag-grid",
