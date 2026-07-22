@@ -16,6 +16,8 @@ export default defineConfig(
       "tmp/**",
       // standalone consumer app dogfooding the published package — has its own toolchain
       "playground/**",
+      // CJS pnpm hook (tooling config, not project code)
+      ".pnpmfile.cjs",
     ],
   },
   js.configs.recommended,
