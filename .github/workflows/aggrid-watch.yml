@@ -26,8 +26,14 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install chromium --with-deps
       - run: pnpm test
-      - name: Report newer majors (informational)
+      - name: Report newer majors and Solid beta drift (informational)
         if: always()
         run: |
           LATEST=$(npm view ag-grid-community dist-tags.latest)
           echo "ag-grid-community latest on npm: $LATEST" >> "$GITHUB_STEP_SUMMARY"
+          PINNED=$(node -p "require('./package.json').devDependencies['solid-js']")
+          NEXT=$(npm view solid-js dist-tags.next)
+          if [ "$PINNED" != "$NEXT" ]; then
+            echo "::warning::Solid beta drift: pinned $PINNED, next is $NEXT — run the beta-bump chore (re-check PENDING_ASYNC_UNTRACKED_READ sniffing + latest() semantics per refactor report)"
+          fi
+          echo "solid-js: pinned $PINNED / next $NEXT" >> "$GITHUB_STEP_SUMMARY"
