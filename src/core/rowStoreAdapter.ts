@@ -28,17 +28,17 @@ import {
 // store reorders (transactions cannot express moves; a pure reorder diffs as no change and
 // the grid keeps its own order — use grid sorting).
 
-// PROXY-LEAK GUARD — EMPIRICAL VERDICT (solid-js 2.0.0-beta.21, jsdom probe 2026-07-22):
-// snapshot()/deep() of an optimistic view OVER A BASE STORE (`createOptimisticStore(rows)`,
-// the spec-by-example shape) return the BASE STORE'S PROXY whenever the top-level value is
-// unmodified — the view's STORE_VALUE is the inner store proxy, and snapshotImpl's
-// "unmodified → return item" fast path hands it back verbatim. The leak is top-level only
-// (recursive child unwraps always compare proxy vs raw and copy), so re-snapshotting until
-// no proxy remains yields plain data. Without this, boot seeds and transaction payloads
-// would carry live proxies across the grid boundary (§7.8 violation) and every core read of
-// them would log STRICT_READ_UNTRACKED in dev. The untrack clears the dev strict-read label:
-// these reads are deliberately non-subscribing. Pinned by the never-proxy assertions in
-// test/unit/rowStoreAdapter.test.tsx.
+// PROXY-LEAK GUARD — CONFIRMED REPRODUCIBLE (solid-js 2.0.0-beta.21, re-verified
+// 2026-07-22 by removing this guard: the flagship optimistic browser test goes red with
+// 18+ STRICT_READ_UNTRACKED warnings from the grid core's own reads of leaked rows).
+// Trigger: the full optimistic lifecycle over a view-of-a-store (rows pushed via the
+// optimistic setter and confirmed into the base) leaves row nodes whose STORE_VALUE is the
+// inner store proxy; snapshotImpl's no-override fast path then returns that proxy verbatim
+// (top-level only — child unwraps copy). A minimal fresh-store case does NOT reproduce;
+// the lifecycle state is required. Re-snapshotting until no $PROXY remains yields plain
+// data; untrack marks these reads deliberately non-subscribing. Pinned by the never-proxy
+// assertions in test/unit/rowStoreAdapter.test.tsx AND by the flagship test's console spy.
+// TODO(upstream): standalone repro + issue against solidjs/solid — tracked in STATUS.
 export const plainSnapshot = <V>(value: V): V =>
   untrack(() => {
     let out: unknown = snapshot(value);
