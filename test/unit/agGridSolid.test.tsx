@@ -33,7 +33,12 @@ const rowData: CarRow[] = [
 
 // grid creation runs in onSettled + GridComp mounts on the following flush, so let the
 // microtask/timer queue drain fully
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+// two macrotask turns: grid creation runs one microtask off onSettled (async-boot noise
+// fix), so the full ready chain needs a second timer tick in the slowest case
+const settle = async () => {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+};
 
 describe("AgGridSolid entry (jsdom)", () => {
   it("boots a real grid core: styled-root layers render and the GridApi is created", async () => {

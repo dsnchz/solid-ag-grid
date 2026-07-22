@@ -8,7 +8,15 @@ import tseslint from "typescript-eslint";
 export default defineConfig(
   {
     // config with just ignores is the replacement for `.eslintignore`
-    ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "reference/**", "tmp/**"],
+    ignores: [
+      "**/dist/**",
+      "**/coverage/**",
+      "**/node_modules/**",
+      "reference/**",
+      "tmp/**",
+      // standalone consumer app dogfooding the published package — has its own toolchain
+      "playground/**",
+    ],
   },
   js.configs.recommended,
   tseslint.configs.strict,
