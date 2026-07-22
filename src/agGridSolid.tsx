@@ -11,6 +11,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  latest,
   NotReadyError,
   onCleanup,
   onSettled,
@@ -86,9 +87,14 @@ const readPropIfReady = (
   props: { [key: string]: any },
   key: string,
   target: { [key: string]: any },
+  // creation-time reads (inside onSettled) go through latest(): it bypasses the pending-link
+  // machinery, so a pending async prop neither logs PENDING_ASYNC_FORBIDDEN_SCOPE nor links
+  // the boot computation for a re-run (the gridCreated guard stays as backstop). The prop-diff
+  // effect keeps normal tracked reads — there the subscription IS the resolve mechanism.
+  viaLatest = false,
 ): void => {
   try {
-    target[key] = props[key];
+    target[key] = viaLatest ? latest(() => props[key]) : props[key];
   } catch (e) {
     if (!isNotReadyError(e)) {
       throw e;
@@ -156,119 +162,126 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     if (isServer) {
       return;
     }
-    untrack(() => {
-      const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
-      const licenseKey = licenseKeyFromContext();
-      if (licenseKey) {
-        // find the EnterpriseCore module which implements _ModuleWithLicenseManager; the lookup
-        // runs over the merged list because the enterprise bundle may arrive via the `modules`
-        // prop while the key arrives via the provider
-        _findEnterpriseCoreModule(modules)?.setLicenseKey(licenseKey);
-      }
-
-      destroyFuncs.push(() => {
-        portalManager.destroy();
-      });
-
-      // per-key isolation for async props (see the Open question 9 verdict above): not-ready
-      // keys are absent from the creation snapshot and arrive later via the prop-diff effect
-      const initialProps: { [key: string]: any } = {};
-      for (const key of Object.keys(props)) {
-        if (!excludeSolidCompProps.has(key)) {
-          readPropIfReady(props, key, initialProps);
+    // creation runs one microtask off onSettled's scope: reading a pending async prop INSIDE
+    // onSettled logs PENDING_ASYNC_FORBIDDEN_SCOPE (dev) even through latest(), because the
+    // warning fires at read time in the forbidden scope. In a plain microtask the same read
+    // throws the catchable untracked-read error instead (handled per-key) — zero console
+    // noise on the async-rowData boot path, contract unchanged (pinned by browser tests).
+    queueMicrotask(() => {
+      untrack(() => {
+        const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
+        const licenseKey = licenseKeyFromContext();
+        if (licenseKey) {
+          // find the EnterpriseCore module which implements _ModuleWithLicenseManager; the lookup
+          // runs over the merged list because the enterprise bundle may arrive via the `modules`
+          // prop while the key arrives via the provider
+          _findEnterpriseCoreModule(modules)?.setLicenseKey(licenseKey);
         }
-      }
-      const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
-      readPropIfReady(props, "gridOptions", gridOptionsHolder);
-
-      const mergedGridOps = _combineAttributesAndGridOptions(
-        gridOptionsHolder.gridOptions,
-        initialProps,
-        Object.keys(initialProps),
-      );
-
-      const processQueuedUpdates = () => {
-        if (ready) {
-          const getFn = () =>
-            frameworkOverrides?.shouldQueueUpdates() ? undefined : whenReadyFuncs.shift();
-          let fn = getFn();
-          while (fn) {
-            fn();
-            fn = getFn();
-          }
-        }
-      };
-
-      frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, usesAgGridProvider);
-      const renderStatus = new RenderStatusService();
-      const gridParams: GridParams = {
-        providedBeanInstances: {
-          frameworkCompWrapper: new SolidFrameworkComponentWrapper(portalManager, mergedGridOps),
-          renderStatus,
-        },
-        modules,
-        frameworkOverrides,
-      };
-
-      const createUiCallback = (ctx: Context) => {
-        setContext(ctx);
-        ctx.createBean(renderStatus);
 
         destroyFuncs.push(() => {
-          ctx.destroy();
+          portalManager.destroy();
         });
 
-        // because Solid 2.0 renders async, we need to wait for the UI to be initialised before exposing the API's
-        ctx.getBean("ctrlsSvc").whenReady(
-          {
-            addDestroyFunc: (func) => {
-              destroyFuncs.push(func);
-            },
-          },
-          // eslint-disable-next-line solid/reactivity -- grid-core callback, intentionally untracked
-          () => {
-            if (ctx.isDestroyed()) {
-              return;
-            }
+        // per-key isolation for async props (see the Open question 9 verdict above): not-ready
+        // keys are absent from the creation snapshot and arrive later via the prop-diff effect
+        const initialProps: { [key: string]: any } = {};
+        for (const key of Object.keys(props)) {
+          if (!excludeSolidCompProps.has(key)) {
+            readPropIfReady(props, key, initialProps, true);
+          }
+        }
+        const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
+        readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
 
-            if (api) {
-              props.ref?.({ api });
-            }
-          },
+        const mergedGridOps = _combineAttributesAndGridOptions(
+          gridOptionsHolder.gridOptions,
+          initialProps,
+          Object.keys(initialProps),
         );
-      };
 
-      // this callback adds to ctrlsSvc.whenReady(), just like above, however because whenReady() executes
-      // funcs in the order they were received, we know adding items here will be AFTER the grid has set columns
-      // and data. this is because GridCoreCreator sets these between calling createUiCallback and acceptChangesCallback
-      const acceptChangesCallback = (ctx: Context) => {
-        ctx.getBean("ctrlsSvc").whenReady(
-          {
-            addDestroyFunc: (func) => {
-              destroyFuncs.push(func);
-            },
-          },
-          () => {
-            for (const f of whenReadyFuncs) {
-              f();
+        const processQueuedUpdates = () => {
+          if (ready) {
+            const getFn = () =>
+              frameworkOverrides?.shouldQueueUpdates() ? undefined : whenReadyFuncs.shift();
+            let fn = getFn();
+            while (fn) {
+              fn();
+              fn = getFn();
             }
-            whenReadyFuncs.length = 0;
-            ready = true;
-          },
-        );
-      };
+          }
+        };
 
-      const gridCoreCreator = new GridCoreCreator();
-      api = gridCoreCreator.create(
-        eOutermost,
-        eInnermost,
-        mergedGridOps,
-        createUiCallback,
-        acceptChangesCallback,
-        gridParams,
-      ) as GridApi<TData>;
-      destroyFuncs.push(() => {
-        api = undefined;
+        frameworkOverrides = new SolidFrameworkOverrides(processQueuedUpdates, usesAgGridProvider);
+        const renderStatus = new RenderStatusService();
+        const gridParams: GridParams = {
+          providedBeanInstances: {
+            frameworkCompWrapper: new SolidFrameworkComponentWrapper(portalManager, mergedGridOps),
+            renderStatus,
+          },
+          modules,
+          frameworkOverrides,
+        };
+
+        const createUiCallback = (ctx: Context) => {
+          setContext(ctx);
+          ctx.createBean(renderStatus);
+
+          destroyFuncs.push(() => {
+            ctx.destroy();
+          });
+
+          // because Solid 2.0 renders async, we need to wait for the UI to be initialised before exposing the API's
+          ctx.getBean("ctrlsSvc").whenReady(
+            {
+              addDestroyFunc: (func) => {
+                destroyFuncs.push(func);
+              },
+            },
+            // eslint-disable-next-line solid/reactivity -- grid-core callback, intentionally untracked
+            () => {
+              if (ctx.isDestroyed()) {
+                return;
+              }
+
+              if (api) {
+                props.ref?.({ api });
+              }
+            },
+          );
+        };
+
+        // this callback adds to ctrlsSvc.whenReady(), just like above, however because whenReady() executes
+        // funcs in the order they were received, we know adding items here will be AFTER the grid has set columns
+        // and data. this is because GridCoreCreator sets these between calling createUiCallback and acceptChangesCallback
+        const acceptChangesCallback = (ctx: Context) => {
+          ctx.getBean("ctrlsSvc").whenReady(
+            {
+              addDestroyFunc: (func) => {
+                destroyFuncs.push(func);
+              },
+            },
+            () => {
+              for (const f of whenReadyFuncs) {
+                f();
+              }
+              whenReadyFuncs.length = 0;
+              ready = true;
+            },
+          );
+        };
+
+        const gridCoreCreator = new GridCoreCreator();
+        api = gridCoreCreator.create(
+          eOutermost,
+          eInnermost,
+          mergedGridOps,
+          createUiCallback,
+          acceptChangesCallback,
+          gridParams,
+        ) as GridApi<TData>;
+        destroyFuncs.push(() => {
+          api = undefined;
+        });
       });
     });
   });
