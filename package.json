@@ -55,7 +55,7 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "vite serve --config dev/vite.config.ts",
+    "dev": "vite serve --config dev-playground/vite.config.ts",
     "clean": "rm -rf dist",
     "build": "pnpm clean && vite build && tsc -p tsconfig.dts.json && tsc -p tsconfig.source.json",
     "format": "oxfmt",
