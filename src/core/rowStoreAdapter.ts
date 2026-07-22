@@ -28,17 +28,19 @@ import {
 // store reorders (transactions cannot express moves; a pure reorder diffs as no change and
 // the grid keeps its own order — use grid sorting).
 
-// PROXY-LEAK GUARD — CONFIRMED REPRODUCIBLE (solid-js 2.0.0-beta.21, re-verified
-// 2026-07-22 by removing this guard: the flagship optimistic browser test goes red with
-// 18+ STRICT_READ_UNTRACKED warnings from the grid core's own reads of leaked rows).
-// Trigger: the full optimistic lifecycle over a view-of-a-store (rows pushed via the
-// optimistic setter and confirmed into the base) leaves row nodes whose STORE_VALUE is the
-// inner store proxy; snapshotImpl's no-override fast path then returns that proxy verbatim
-// (top-level only — child unwraps copy). A minimal fresh-store case does NOT reproduce;
-// the lifecycle state is required. Re-snapshotting until no $PROXY remains yields plain
-// data; untrack marks these reads deliberately non-subscribing. Pinned by the never-proxy
-// assertions in test/unit/rowStoreAdapter.test.tsx AND by the flagship test's console spy.
-// TODO(upstream): standalone repro + issue against solidjs/solid — tracked in STATUS.
+// PROXY-LEAK GUARD — CONFIRMED, MINIMAL 3-LINE REPRO (solid-js 2.0.0-beta.21):
+//   const [base] = createStore([{ id: "a" }]);
+//   const [view] = createOptimisticStore(base);
+//   snapshot(view[0])  // ← returns base[0] — the BASE STORE'S LIVE ROW PROXY, not plain data
+// The per-item path is the trigger: snapshot(view)[0] (whole array first) is plain, but any
+// row accessed THROUGH the view (view[i], .map, deep handles — exactly this adapter's shape)
+// snapshots to the inner proxy: the view row node's STORE_VALUE is the base row proxy and
+// snapshotImpl's no-override fast path returns it verbatim (top-level only — child unwraps
+// copy). Evidence both ways: removing this guard turns the flagship optimistic browser test
+// red with 18+ core-read STRICT_READ_UNTRACKED warnings. Re-snapshot until no $PROXY
+// remains; untrack marks these reads deliberately non-subscribing. Pinned by never-proxy
+// assertions in test/unit/rowStoreAdapter.test.tsx + the flagship console spy. Reported
+// upstream by Daniel (Solid Discord) — remove when fixed.
 export const plainSnapshot = <V>(value: V): V =>
   untrack(() => {
     let out: unknown = snapshot(value);
