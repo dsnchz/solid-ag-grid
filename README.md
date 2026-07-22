@@ -104,7 +104,7 @@ const rows = createMemo(() => fetchRowsForUser(userId())); // returns a Promise
 
 And when `userId` changes and `rows` goes pending **again**, the grid keeps the previous rows visible until the new data resolves — no overlay flash, no blanking. Stale-while-revalidate is a guaranteed, test-pinned contract, and it falls out of the design: a pending prop is simply omitted from the change snapshot until it resolves.
 
-Want explicit control? `loading={isPending(() => rows())}` drives the overlay by hand, and `loadingOverlayComponent` / `noRowsOverlayComponent` accept ordinary Solid components.
+Want explicit control? `loading={isPending(() => rows())}` drives the overlay by hand — safe in the grid prop position (the grid guards its own reads). But if you render an `isPending` indicator **yourself**, wrap that JSX in a `<Loading>` boundary: `isPending` rethrows while its source is uninitialized, and an unguarded read defers your whole tree's mount until the fetch settles. `loadingOverlayComponent` / `noRowsOverlayComponent` accept ordinary Solid components.
 
 ### 2. Async cell renderers
 
