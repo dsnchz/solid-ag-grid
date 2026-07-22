@@ -1,6 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { isServer } from "@solidjs/web";
-import type { Context, GridApi, GridOptions, Module } from "ag-grid-community";
+import type { Context, GetRowIdParams, GridApi, GridOptions, Module } from "ag-grid-community";
 import { _processOnChange } from "ag-grid-community";
 import {
   createEffect,
@@ -19,6 +19,8 @@ import { bootGrid } from "./core/gridBoot";
 import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
 import { createReadyQueue } from "./core/readyQueue";
+import type { RowStoreAdapter } from "./core/rowStoreAdapter";
+import { createRowStoreAdapter, plainSnapshot } from "./core/rowStoreAdapter";
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
 import GridComp from "./gridComp";
 
@@ -45,6 +47,16 @@ export interface AgGridSolidProps<TData = any> extends GridOptions<TData> {
   /** Default: div */
   componentWrappingElement?: string;
 
+  /**
+   * Opt-in declarative row data: a Solid array store (plain, or a `createOptimisticStore`
+   * view) whose mutations the wrapper projects into surgical grid transactions — structural
+   * add/remove synchronously (instant optimistic paint), field updates via the grid's async
+   * batch. Requires `getRowId` returning a STABLE, data-derived id (client-generate ids and
+   * persist them; an id that changes across an optimistic confirm reads as remove+add).
+   * Mutually exclusive with `rowData`; the store identity is fixed for the grid's lifetime.
+   */
+  rowStore?: readonly TData[];
+
   ref?: (ref: AgGridSolidRef<TData>) => void;
 }
 
@@ -56,6 +68,7 @@ const solidPropsNotGridOptions: SolidCompProps = {
   containerStyle: undefined,
   class: undefined,
   componentWrappingElement: undefined,
+  rowStore: undefined,
   ref: undefined,
 };
 const excludeSolidCompProps = new Set(Object.keys(solidPropsNotGridOptions));
@@ -83,6 +96,44 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   // the portals signal INSIDE the manager, so the instance itself needs no signal wrapper and
   // the portal <For> below needs no existence guard
   const portalManager = new PortalManager(untrack(() => props.componentWrappingElement));
+
+  // rowStore wiring (T6, src/core/rowStoreAdapter.ts): captured ONCE (§7.1 untrack — the store
+  // identity is grid configuration, fixed for the grid's lifetime) and inert server-side (the
+  // adapter never exists on the server, preserving the SSR shell contract).
+  const rowStore = isServer ? undefined : untrack(() => props.rowStore);
+  let rowStoreAdapter: RowStoreAdapter<TData> | undefined;
+  if (rowStore) {
+    if ("rowData" in props) {
+      console.warn(
+        "AG Grid: both `rowData` and `rowStore` are provided — `rowData` is ignored; the row store drives row data.",
+      );
+    }
+    const getRowId = untrack(() => props.getRowId);
+    if (getRowId === undefined) {
+      // AG Grid's own validation style (cf. the core's notesDataSource getRowId validate):
+      // console error, then run degraded — the grid still shows the store's initial snapshot
+      console.error(
+        "AG Grid: `rowStore` requires a `getRowId` callback (stable, data-derived row ids) — live row-store projection is disabled.",
+      );
+    } else {
+      rowStoreAdapter = createRowStoreAdapter<TData>({
+        store: rowStore,
+        // key derivation matches the core's _getRowIdCallback (String-coerced). The cast covers
+        // the seed pass, where api does not exist yet — getRowId used with rowStore must derive
+        // the id from `data` alone (documented on the prop).
+        getRowKey: (data) =>
+          String(getRowId({ data, level: 0, api } as unknown as GetRowIdParams<TData>)),
+        getApi: () => api,
+        processWhenReady: readyQueue.processWhenReady,
+      });
+    }
+  }
+
+  // rowStore replaces rowData as the grid's data channel: excluding rowData from the
+  // grid-option props means the prop-diff effect can never fight the adapter's transactions
+  const excludeProps = rowStore
+    ? new Set([...excludeSolidCompProps, "rowData"])
+    : excludeSolidCompProps;
 
   // reactive guard for GridComp: context exists and is alive (set once per component instance;
   // teardown unmounts the whole component, so isDestroyed is re-checked only on context change)
@@ -116,9 +167,17 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     // per-key isolation for async props (Open question 9 verdict — see src/core/asyncProps.ts):
     // not-ready keys are absent from the creation snapshot and arrive later via the prop-diff
     // effect
-    const initialProps = snapshotGridProps(props, excludeSolidCompProps, true);
+    const initialProps = snapshotGridProps(props, excludeProps, true);
     const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
     readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
+
+    if (rowStore) {
+      // seed rowData from the adapter's creation-time snapshot — the exact baseline its
+      // structural diff starts from, so store mutations landing before the grid is ready
+      // replay as queued transactions with no double-apply. Degraded mode (missing getRowId,
+      // no adapter) still shows the initial snapshot, statically.
+      initialProps.rowData = rowStoreAdapter ? rowStoreAdapter.seedRows : plainSnapshot(rowStore);
+    }
 
     frameworkOverrides = new SolidFrameworkOverrides(
       readyQueue.processQueuedUpdates,
@@ -177,7 +236,7 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     // Not-ready async keys are omitted per-key (Open question 9 verdict — see
     // src/core/asyncProps.ts): the tracked read already subscribed this compute, so it re-runs
     // — and the key diffs in — on resolve.
-    () => snapshotGridProps(props, excludeSolidCompProps),
+    () => snapshotGridProps(props, excludeProps),
     // apply: diff against the previous snapshot and route the changes through the ready queue
     (nextProps, prevProps) => {
       if (!prevProps) {

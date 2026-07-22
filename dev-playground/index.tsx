@@ -4,7 +4,20 @@ import type { JSX } from "@solidjs/web";
 import { render } from "@solidjs/web";
 import type { ICellRendererParams } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import {
+  action,
+  affects,
+  createMemo,
+  createOptimisticStore,
+  createSignal,
+  // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
+  createStore,
+  deep,
+  For,
+  isPending,
+  onSettled,
+  Show,
+} from "solid-js";
 
 import type {
   CustomCellEditorProps,
@@ -257,6 +270,144 @@ const EditorsScenario = () => (
   </>
 );
 
+/** 8. rowStore: optimistic CRUD against a simulated flaky server — zero grid API calls.
+ * The grid is driven ONLY by store mutations: `action` + `createOptimisticStore` show rows
+ * instantly, the adapter projects them as transactions, and a failed server write reverts
+ * the overlay — the row disappears (or reappears, for deletes) by itself. */
+type ItemRow = { readonly id: string; readonly name: string; readonly qty: number };
+
+const OptimisticCrudScenario = () => {
+  // stable client-generated ids persisted by the "server" — the supported rowStore pattern
+  const [rows, setRows] = createStore<ItemRow[]>([
+    { id: crypto.randomUUID(), name: "widget", qty: 3 },
+    { id: crypto.randomUUID(), name: "gadget", qty: 5 },
+  ]);
+  const [optimisticRows, setOptimisticRows] = createOptimisticStore<ItemRow[]>(rows);
+
+  const [failNext, setFailNext] = createSignal(false);
+  const [lastError, setLastError] = createSignal("");
+  const [name, setName] = createSignal("");
+  const [qty, setQty] = createSignal(1);
+
+  const server = async <T,>(result: T): Promise<T> => {
+    await sleep(1500);
+    if (failNext()) {
+      setFailNext(false);
+      throw new Error("simulated server failure");
+    }
+    return result;
+  };
+
+  // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
+  const addRow = action(function* (row: ItemRow) {
+    affects(rows); // declares the in-flight write → isPending(deep(rows)) reads true
+    setOptimisticRows((draft) => {
+      draft.push(row); // shows in the grid INSTANTLY
+    });
+    const saved = (yield server(row)) as ItemRow; // background write
+    setRows((draft) => {
+      draft.push(saved); // confirm into the base store
+    });
+  });
+
+  // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
+  const removeRow = action(function* (id: string) {
+    affects(rows);
+    setOptimisticRows((draft) => draft.filter((row) => row.id !== id)); // gone INSTANTLY
+    yield server(id);
+    setRows((draft) => draft.filter((row) => row.id !== id));
+  });
+
+  const submit = () => {
+    if (!name()) {
+      return;
+    }
+    setLastError("");
+    addRow({ id: crypto.randomUUID(), name: name(), qty: qty() }).catch((e: unknown) =>
+      setLastError(e instanceof Error ? e.message : String(e)),
+    );
+    setName("");
+  };
+
+  // pending affordance: true while an action that declared affects(rows) is awaiting its
+  // server settle. Note: probing the OPTIMISTIC view never reads pending — overlay writes
+  // are revealed immediately (that is their point); the in-flight state lives on the base
+  // store the action declared it will change.
+  const saving = createMemo(() => isPending(() => deep(rows)));
+  // a row is pending iff it is visible optimistically but not yet confirmed into the base
+  // store — the renderer reads the app store directly (Solid-native external reactivity)
+  const StatusCell = (props: ICellRendererParams<ItemRow>) => {
+    const confirmed = createMemo(() => rows.some((row) => row.id === props.data?.id));
+    return (
+      <Show when={confirmed()} fallback={<em style={{ color: "#d97706" }}>saving…</em>}>
+        <span style={{ color: "#16a34a" }}>saved</span>
+      </Show>
+    );
+  };
+  const DeleteCell = (props: ICellRendererParams<ItemRow>) => (
+    <button
+      onClick={() => {
+        const id = props.data?.id;
+        if (id) {
+          setLastError("");
+          removeRow(id).catch((e: unknown) =>
+            setLastError(e instanceof Error ? e.message : String(e)),
+          );
+        }
+      }}
+    >
+      delete
+    </button>
+  );
+
+  return (
+    <>
+      <p class="scenario-note">
+        The grid is driven only by <code>rowStore</code> mutations — no grid API calls. Adds and
+        deletes paint instantly; toggle "fail next request" to watch a failed write auto-revert (the
+        optimistic row vanishes, a deleted row comes back).
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", "align-items": "center" }}>
+        <input placeholder="name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <input
+          type="number"
+          style={{ width: "5rem" }}
+          value={qty()}
+          onInput={(e) => setQty(Number(e.currentTarget.value) || 0)}
+        />
+        <button onClick={submit}>Add row (1.5s save)</button>
+        <label>
+          <input
+            type="checkbox"
+            checked={failNext()}
+            onChange={(e) => setFailNext(e.currentTarget.checked)}
+          />
+          fail next request
+        </label>
+        <Show when={saving()}>
+          <em style={{ color: "#d97706" }}>saving…</em>
+        </Show>
+        <Show when={lastError()}>
+          <strong style={{ color: "#dc2626" }}>server error: {lastError()} (reverted)</strong>
+        </Show>
+      </div>
+      <div style={{ height: "400px", "margin-top": "0.5rem" }}>
+        <AgGridSolid
+          columnDefs={[
+            { field: "name" },
+            { field: "qty" },
+            { headerName: "status", cellRenderer: StatusCell, sortable: false },
+            { headerName: "", cellRenderer: DeleteCell, sortable: false, width: 110 },
+          ]}
+          rowStore={optimisticRows}
+          getRowId={(params) => params.data.id}
+          defaultColDef={{ flex: 1 }}
+        />
+      </div>
+    </>
+  );
+};
+
 /* ------------------------------------------------------------------ app shell */
 
 type Scenario = { readonly id: string; readonly label: string; readonly Comp: () => JSX.Element };
@@ -269,6 +420,7 @@ const SCENARIOS: Scenario[] = [
   { id: "overlay", label: "External-signal overlay", Comp: OverlayScenario },
   { id: "fullwidth", label: "Full-width rows", Comp: FullWidthScenario },
   { id: "editors", label: "Editors", Comp: EditorsScenario },
+  { id: "rowstore", label: "rowStore optimistic CRUD", Comp: OptimisticCrudScenario },
 ];
 
 const App = () => {
