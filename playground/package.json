@@ -1,7 +1,7 @@
 {
   "name": "solid-ag-grid-playground",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "description": "Dogfooding playground for the published @dschz/solid-ag-grid package (installed from the npm registry, not the local source).",
   "type": "module",
   "scripts": {

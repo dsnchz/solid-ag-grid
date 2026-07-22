@@ -38,8 +38,34 @@ export const DEPARTMENTS = [
 ] as const;
 
 const COUNTRIES = ["USA", "Ireland", "Germany", "Japan", "Brazil", "Canada", "Spain"] as const;
-const FIRST = ["Ada", "Grace", "Alan", "Edsger", "Barbara", "Donald", "Margaret", "John", "Radia", "Linus", "Anita", "Ken"] as const;
-const LAST = ["Lovelace", "Hopper", "Turing", "Dijkstra", "Liskov", "Knuth", "Hamilton", "Backus", "Perlman", "Torvalds", "Borg", "Thompson"] as const;
+const FIRST = [
+  "Ada",
+  "Grace",
+  "Alan",
+  "Edsger",
+  "Barbara",
+  "Donald",
+  "Margaret",
+  "John",
+  "Radia",
+  "Linus",
+  "Anita",
+  "Ken",
+] as const;
+const LAST = [
+  "Lovelace",
+  "Hopper",
+  "Turing",
+  "Dijkstra",
+  "Liskov",
+  "Knuth",
+  "Hamilton",
+  "Backus",
+  "Perlman",
+  "Torvalds",
+  "Borg",
+  "Thompson",
+] as const;
 
 export const makeEmployees = (count = 250, seed = 42): Employee[] => {
   const rand = rng(seed);
@@ -84,16 +110,26 @@ export type Product = { id: string; name: string; category: string; price: numbe
 
 const DATASET_SOURCES = {
   laptops: [
-    ["ThinkPad X1", "ultrabook", 1899], ["MacBook Pro 14", "pro", 1999], ["Framework 13", "modular", 1049],
-    ["XPS 15", "creator", 1749], ["ZenBook S", "ultrabook", 1199], ["Legion 5", "gaming", 1399],
+    ["ThinkPad X1", "ultrabook", 1899],
+    ["MacBook Pro 14", "pro", 1999],
+    ["Framework 13", "modular", 1049],
+    ["XPS 15", "creator", 1749],
+    ["ZenBook S", "ultrabook", 1199],
+    ["Legion 5", "gaming", 1399],
   ],
   phones: [
-    ["Pixel 9", "android", 799], ["iPhone 16", "ios", 829], ["Galaxy S25", "android", 899],
-    ["Fairphone 5", "repairable", 699], ["Nothing 3", "android", 599],
+    ["Pixel 9", "android", 799],
+    ["iPhone 16", "ios", 829],
+    ["Galaxy S25", "android", 899],
+    ["Fairphone 5", "repairable", 699],
+    ["Nothing 3", "android", 599],
   ],
   monitors: [
-    ["UltraSharp 27", "office", 449], ["Odyssey G7", "gaming", 649], ["Studio Display", "creator", 1599],
-    ["ProArt 32", "creator", 1099], ["ThinkVision M14", "portable", 249],
+    ["UltraSharp 27", "office", 449],
+    ["Odyssey G7", "gaming", 649],
+    ["Studio Display", "creator", 1599],
+    ["ProArt 32", "creator", 1099],
+    ["ThinkVision M14", "portable", 249],
   ],
 } as const;
 
@@ -137,7 +173,18 @@ export type PerfRow = {
   pnl: number;
 };
 
-const PERF_SYMBOLS = ["SOL", "AGG", "SIG", "MEMO", "FLUX", "RXG", "SSR", "HYD", "QTZ", "BAL"] as const;
+const PERF_SYMBOLS = [
+  "SOL",
+  "AGG",
+  "SIG",
+  "MEMO",
+  "FLUX",
+  "RXG",
+  "SSR",
+  "HYD",
+  "QTZ",
+  "BAL",
+] as const;
 const TRADERS = ["alice", "bob", "carol", "dave", "erin", "frank", "grace", "heidi"] as const;
 
 export const makePerfRows = (count = 100_000, seed = 7): PerfRow[] => {
@@ -153,4 +200,6 @@ export const makePerfRows = (count = 100_000, seed = 7): PerfRow[] => {
 };
 
 export const money = (v: number | null | undefined) =>
-  v == null ? "" : v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  v == null
+    ? ""
+    : v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });

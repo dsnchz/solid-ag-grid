@@ -35,7 +35,11 @@ export const ApiConsole = () => {
   const actions: { label: string; run: () => void }[] = [
     {
       label: "selectAll()",
-      run: () => withApi("selectAll", (api) => (api.selectAll(), `${api.getSelectedRows().length} rows selected`)),
+      run: () =>
+        withApi(
+          "selectAll",
+          (api) => (api.selectAll(), `${api.getSelectedRows().length} rows selected`),
+        ),
     },
     { label: "deselectAll()", run: () => withApi("deselectAll", (api) => api.deselectAll()) },
     {
@@ -46,13 +50,21 @@ export const ApiConsole = () => {
           return `${rows.length} selected${rows.length ? ` — first: ${rows[0]?.name}` : ""}`;
         }),
     },
-    { label: "sizeColumnsToFit()", run: () => withApi("sizeColumnsToFit", (api) => api.sizeColumnsToFit()) },
-    { label: "autoSizeAllColumns()", run: () => withApi("autoSizeAllColumns", (api) => api.autoSizeAllColumns()) },
+    {
+      label: "sizeColumnsToFit()",
+      run: () => withApi("sizeColumnsToFit", (api) => api.sizeColumnsToFit()),
+    },
+    {
+      label: "autoSizeAllColumns()",
+      run: () => withApi("autoSizeAllColumns", (api) => api.autoSizeAllColumns()),
+    },
     {
       label: "setFilterModel({ dept: Engineering })",
       run: () =>
         withApi("setFilterModel", (api) => {
-          api.setFilterModel({ dept: { filterType: "text", type: "equals", filter: "Engineering" } });
+          api.setFilterModel({
+            dept: { filterType: "text", type: "equals", filter: "Engineering" },
+          });
           return `${api.getDisplayedRowCount()} rows displayed`;
         }),
     },

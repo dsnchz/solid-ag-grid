@@ -52,7 +52,9 @@ const DeptFilter = (props: CustomFilterProps<Employee, unknown, DeptModel>) => {
 
 /** Floating filter mirroring the parent filter's model — reads props.model live,
  *  writes back through props.onModelChange. */
-const DeptFloatingFilter = (props: CustomFloatingFilterProps<any, Employee, unknown, DeptModel>) => (
+const DeptFloatingFilter = (
+  props: CustomFloatingFilterProps<any, Employee, unknown, DeptModel>,
+) => (
   <div style={{ display: "flex", "align-items": "center", gap: "0.4rem", width: "100%" }}>
     <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
       {props.model == null ? "(all depts)" : props.model.join(", ")}

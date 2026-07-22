@@ -56,9 +56,7 @@ export const MasterDetail = () => {
   // New array identity on every toggle; getRowId keeps existing rows stable.
   const rows = createMemo<Row[]>(() =>
     CARS.flatMap((car): Row[] =>
-      expanded().has(car.id)
-        ? [car, { id: `${car.id}-detail`, detail: true, car }]
-        : [car],
+      expanded().has(car.id) ? [car, { id: `${car.id}-detail`, detail: true, car }] : [car],
     ),
   );
 
@@ -92,10 +90,10 @@ export const MasterDetail = () => {
         />
       </div>
       <p class="hint">
-        Click ▶ to expand a car. The detail row is a community-edition full-width row whose
-        renderer mounts a nested <code>AgGridSolid</code> — two live grids, one reactive graph.
-        Collapse and re-expand freely; <code>getRowId</code> keeps master rows stable across the
-        rowData identity changes.
+        Click ▶ to expand a car. The detail row is a community-edition full-width row whose renderer
+        mounts a nested <code>AgGridSolid</code> — two live grids, one reactive graph. Collapse and
+        re-expand freely; <code>getRowId</code> keeps master rows stable across the rowData identity
+        changes.
       </p>
     </>
   );

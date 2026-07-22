@@ -27,9 +27,7 @@ const QuoteCell = (props: CustomCellRendererProps<Ticker, number>) => {
 
 const RatingCell = (props: CustomCellRendererProps<Ticker, string>) => {
   const rating = createMemo(() => fetchAnalystRating(props.data?.symbol ?? ""));
-  return (
-    <span class={rating() === "sell" ? "pill down" : "pill up"}>{rating()}</span>
-  );
+  return <span class={rating() === "sell" ? "pill down" : "pill up"}>{rating()}</span>;
 };
 
 const CellSkeleton = () => <span class="skeleton">fetching…</span>;
