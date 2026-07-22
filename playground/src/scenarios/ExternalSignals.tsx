@@ -32,7 +32,12 @@ const PriceCell = (props: CustomCellRendererProps<Ticker>) => {
 
 const DeltaCell = (props: CustomCellRendererProps<Ticker>) => {
   const delta = () => quotes()[props.data?.symbol ?? ""]?.delta ?? 0;
-  return <span>{delta() >= 0 ? "+" : ""}{delta().toFixed(2)}</span>;
+  return (
+    <span>
+      {delta() >= 0 ? "+" : ""}
+      {delta().toFixed(2)}
+    </span>
+  );
 };
 
 /** No-rows overlay reading the same app signals — it updates live inside the grid. */
@@ -108,8 +113,8 @@ export const ExternalSignals = () => {
         />
       </div>
       <p class="hint">
-        The price cells and the no-rows overlay subscribe to module-level signals updated by a
-        plain <code>setInterval</code>. No <code>api.refreshCells</code>, no transactions, no grid
+        The price cells and the no-rows overlay subscribe to module-level signals updated by a plain{" "}
+        <code>setInterval</code>. No <code>api.refreshCells</code>, no transactions, no grid
         involvement at all — the JSX subscription is the update path.
       </p>
     </>

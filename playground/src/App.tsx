@@ -34,7 +34,7 @@ const SCENARIOS: Scenario[] = [
     nav: "Async rowData (SWR)",
     title: "Async row data — stale-while-revalidate for free",
     blurb:
-      "rowData is an async createMemo. First load shows the grid's loading overlay; switching datasets keeps the previous rows visible until the new fetch resolves — no overlay flash, no blanking. The \"revalidating\" badge is driven by isPending() outside the grid.",
+      'rowData is an async createMemo. First load shows the grid\'s loading overlay; switching datasets keeps the previous rows visible until the new fetch resolves — no overlay flash, no blanking. The "revalidating" badge is driven by isPending() outside the grid.',
     Comp: AsyncRows,
   },
   {
@@ -66,7 +66,7 @@ const SCENARIOS: Scenario[] = [
     nav: "Editors",
     title: "Editors — inline custom, popup, and validation",
     blurb:
-      "Double-click to edit. \"name\" is a custom inline Solid editor with live validation (empty values are rejected via isCancelAfterEnd). \"dept\" is a custom popup picker. \"salary\" uses the built-in number editor. Names of Finance employees refuse to start editing via isCancelBeforeStart.",
+      'Double-click to edit. "name" is a custom inline Solid editor with live validation (empty values are rejected via isCancelAfterEnd). "dept" is a custom popup picker. "salary" uses the built-in number editor. Names of Finance employees refuse to start editing via isCancelBeforeStart.',
     Comp: Editors,
   },
   {
@@ -82,7 +82,7 @@ const SCENARIOS: Scenario[] = [
     nav: "Theming",
     title: "Theming — Theming API themes and legacy CSS mode",
     blurb:
-      "The theme prop is reactive: switch between themeQuartz, a withParams() variant, and themeBalham at runtime on the same grid. Legacy mode remounts the grid with theme=\"legacy\" and scoped legacy stylesheets, exactly as a migrating app would.",
+      'The theme prop is reactive: switch between themeQuartz, a withParams() variant, and themeBalham at runtime on the same grid. Legacy mode remounts the grid with theme="legacy" and scoped legacy stylesheets, exactly as a migrating app would.',
     Comp: Theming,
   },
   {
