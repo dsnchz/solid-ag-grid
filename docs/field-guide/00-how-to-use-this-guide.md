@@ -22,4 +22,6 @@ Chapters:
 2. [The Solid 2.0 timing model](02-solid-2-timing-model.md) — async data vs
    async commit, the write/read legality map, the port's reactive doctrine,
    and the scorecard against the React wrapper.
-   (More chapters land as the port progresses.)
+3. [Anatomy of the port](03-anatomy-of-the-port.md) — the module map, where
+   every law is enforced and proven, data-flow walkthroughs, and the
+   change-review checklist.
