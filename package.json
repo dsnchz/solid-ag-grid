@@ -46,6 +46,9 @@
       "default": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite serve --config dev/vite.config.ts",
     "clean": "rm -rf dist",
