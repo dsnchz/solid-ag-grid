@@ -7,7 +7,7 @@ import { createElementSize, createResizeObserver } from "@solid-primitives/resiz
 import { render } from "@solidjs/testing-library";
 import type { GridApi } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import { createMemo, createSignal, flush, onSettled } from "solid-js";
+import { createMemo, createSignal, flush } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
 import AgGridSolid from "../../src/index";
@@ -17,7 +17,10 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 describe("pairing with @solid-primitives/resize-observer", () => {
   it("observer on the grid container drives sizeColumnsToFit; size signal drives a prop", async () => {
     let api: GridApi | undefined;
-    let host!: HTMLDivElement;
+    // signal ref: a plain `let` closed over by the accessor stays undefined forever (the
+    // body runs before refs; nothing re-evaluates a non-reactive accessor) — the observer
+    // would never attach. The signal makes attachment reactive to the ref arriving.
+    const [host, setHost] = createSignal<HTMLDivElement>();
     const [width, setWidth] = createSignal(600);
     const fitSpy = vi.fn();
 
@@ -27,7 +30,7 @@ describe("pairing with @solid-primitives/resize-observer", () => {
       // is CLEANUP_IN_FORBIDDEN_SCOPE there (docs/reactivity.md footgun 8, ecosystem
       // corollary — pinned by this test's history).
       createResizeObserver(
-        () => host,
+        () => host(),
         () => {
           if (api) {
             api.sizeColumnsToFit();
@@ -36,12 +39,12 @@ describe("pairing with @solid-primitives/resize-observer", () => {
         },
       );
 
-      const size = createElementSize(() => host);
+      const size = createElementSize(() => host());
       // size signal → reactive grid prop (the options doorway)
       const headerHeight = createMemo(() => ((size.width ?? 600) > 500 ? 40 : 28));
 
       return (
-        <div ref={host} style={{ width: `${width()}px`, height: "300px" }}>
+        <div ref={setHost} style={{ width: `${width()}px`, height: "300px" }}>
           <AgGridSolid
             columnDefs={[{ field: "a" }, { field: "b" }]}
             rowData={[{ a: 1, b: 2 }]}
