@@ -84,29 +84,47 @@ async function bench(shape: Shape, renderer: "solid" | "vanilla") {
   return { out, alive };
 }
 
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)]!;
+};
+
+// Objectivity measures: (1) warmup pass for BOTH renderers before any measurement
+// (cold JIT would penalize whichever runs first); (2) ITERATIONS alternating order
+// per iteration so neither renderer systematically runs on a warmer engine;
+// (3) MEDIAN per op (robust to GC pauses and scheduler noise).
+const ITERATIONS = 5;
+const WARMUP: Shape = { name: "warmup", rows: 200, cols: 5 };
+
 describe("perf comparison: Solid vs vanilla rendering", () => {
   for (const shape of [TALL, WIDE]) {
     it(`${shape.name}`, async () => {
-      const solid = await bench(shape, "solid");
-      const vanilla = await bench(shape, "vanilla");
+      await bench(WARMUP, "solid");
+      await bench(WARMUP, "vanilla");
 
-      const labels = Object.keys(solid.out);
-      const table = labels.map((l) => ({
-        op: l,
-        solid_ms: solid.out[l],
-        vanilla_ms: vanilla.out[l],
-        ratio: Number((solid.out[l]! / Math.max(1, vanilla.out[l]!)).toFixed(2)),
-      }));
-      // console.warn — the vite client-log bridge only forwards warn/error to the terminal
-      for (const row of table) {
-        // eslint-disable-next-line no-console -- informational benchmark output
-        console.warn(
-          `PERF [${shape.name}] ${row.op}: solid ${row.solid_ms}ms vs vanilla ${row.vanilla_ms}ms (x${row.ratio})`,
-        );
+      const samples: Record<string, { solid: number[]; vanilla: number[] }> = {};
+      for (let i = 0; i < ITERATIONS; i++) {
+        const order: ("solid" | "vanilla")[] =
+          i % 2 === 0 ? ["solid", "vanilla"] : ["vanilla", "solid"];
+        for (const renderer of order) {
+          const { out, alive } = await bench(shape, renderer);
+          expect(alive).toBe(true);
+          for (const [op, ms] of Object.entries(out)) {
+            (samples[op] ??= { solid: [], vanilla: [] })[renderer].push(ms);
+          }
+        }
       }
 
-      expect(solid.alive).toBe(true);
-      expect(vanilla.alive).toBe(true);
-    }, 120_000);
+      // console.warn — the vite client-log bridge only forwards warn/error to the terminal
+      for (const [op, s] of Object.entries(samples)) {
+        const solidMed = median(s.solid);
+        const vanillaMed = median(s.vanilla);
+        const ratio = (solidMed / Math.max(1, vanillaMed)).toFixed(2);
+        // eslint-disable-next-line no-console -- informational benchmark output
+        console.warn(
+          `PERF [${shape.name}] ${op}: solid ${solidMed}ms vs vanilla ${vanillaMed}ms (x${ratio}) [n=${ITERATIONS}, median]`,
+        );
+      }
+    }, 300_000);
   }
 });
