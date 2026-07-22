@@ -211,3 +211,25 @@ onSettled(() => {
 
 This applies to any component in your app, not just grid components — but grid
 apps hit it often (intervals feeding rowData, resize listeners around grids).
+
+## Reactive CSS classes: jurisdiction map
+
+Classes follow the same two-doorways doctrine as data:
+
+- **The outer container is yours, fully reactive**: `class={mode() === "dark" ?
+"grid-dark" : "grid-light"}` on `<AgGridSolid>` — theming installs on inner
+  layers and never fights you. Same for `containerStyle`.
+- **Grid-internal elements (rows/cells) take dynamic classes through the grid's
+  API**: `rowClassRules` / `cellClassRules` / `rowClass` / `cellClass`. The core
+  evaluates them and pushes through the ctrl path, where they compose with the
+  grid's own feature classes instead of clobbering them (this wrapper's internal
+  discipline exists precisely so your rule-driven classes survive re-renders).
+  The rules objects are reactive props like any other option.
+- **Inside your own components, anything goes** — cell renderers, overlays and
+  headers own their DOM; `class={signal() ? "hot" : "cold"}` is plain Solid.
+- **Timing nuance**: `cellClassRules` re-evaluate when the core refreshes those
+  cells (data change, `api.refreshCells()`), not spontaneously on arbitrary app
+  signals. Signal-driven classes on grid-internal elements → call
+  `refreshCells()` from an effect, or better, own the element with a custom
+  renderer. Never mutate classes on grid-owned elements from outside — true in
+  vanilla and every wrapper.
