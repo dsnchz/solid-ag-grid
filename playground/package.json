@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dschz/solid-ag-grid": "next",
-    "@solidjs/web": "2.0.0-beta.21",
+    "@dschz/solid-ag-grid": "36.0.0-next.3",
+    "@solidjs/web": "2.0.0-beta.24",
     "ag-grid-community": "^36.0.0",
-    "solid-js": "2.0.0-beta.21"
+    "solid-js": "2.0.0-beta.24"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
