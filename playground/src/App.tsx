@@ -10,6 +10,7 @@ import { Editors } from "./scenarios/Editors";
 import { ExternalSignals } from "./scenarios/ExternalSignals";
 import { MasterDetail } from "./scenarios/MasterDetail";
 import { Performance } from "./scenarios/Performance";
+import { RowStore } from "./scenarios/RowStore";
 import { Theming } from "./scenarios/Theming";
 
 type Scenario = {
@@ -78,6 +79,14 @@ const SCENARIOS: Scenario[] = [
     Comp: MasterDetail,
   },
   {
+    id: "row-store",
+    nav: "rowStore CRUD",
+    title: "rowStore — optimistic CRUD with automatic rollback",
+    blurb:
+      "Declarative row data: the grid is driven only by rowStore mutations — optimistic insert paints instantly and a failed server write rolls back automatically (the row vanishes, a deleted row comes back), with zero grid API calls. action() + createOptimisticStore do the work; the saving badge is a co-written createOptimistic(false) flag and per-row status is derived from the base store.",
+    Comp: RowStore,
+  },
+  {
     id: "theming",
     nav: "Theming",
     title: "Theming — Theming API themes and legacy CSS mode",
@@ -119,7 +128,7 @@ export const App = () => {
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-title">solid-ag-grid</span>
-          <span class="brand-sub">dogfood playground · v36.0.0-next.1</span>
+          <span class="brand-sub">dogfood playground · v36.0.0-next.3</span>
         </div>
         <nav>
           <For each={SCENARIOS}>
@@ -134,7 +143,7 @@ export const App = () => {
           </For>
         </nav>
         <div class="sidebar-foot">
-          published package · npm <code>@next</code>
+          published package · npm <code>36.0.0-next.3</code>
         </div>
       </aside>
       <main class="content">
