@@ -17,9 +17,9 @@ Because the rendering layer is Solid, your components are real Solid components 
 ## Installation
 
 ```bash
-npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.21 @solidjs/web@2.0.0-beta.21
+npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.24 @solidjs/web@2.0.0-beta.24
 # or
-pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.21 @solidjs/web@2.0.0-beta.21
+pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.24 @solidjs/web@2.0.0-beta.24
 ```
 
 Peer dependencies:
@@ -32,7 +32,7 @@ Peer dependencies:
 
 Two things worth knowing:
 
-- **Pin your Solid betas exactly** (no `^`). Solid 2.0 betas ship every few days and can change timing semantics; this package is developed and tested against a pinned beta (currently `2.0.0-beta.21`). We re-verify and bump deliberately.
+- **Pin your Solid betas exactly** (no `^`). Solid 2.0 betas ship every few days and can change timing semantics; this package is developed and tested against a pinned beta (currently `2.0.0-beta.24`, which the `rowStore` adapter's delta capture also requires). We re-verify and bump deliberately.
 - **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package — it installs automatically; you never interact with it.
 
 Your `tsconfig.json` / bundler must use Solid 2.0's JSX runtime:
@@ -89,7 +89,7 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 
 ## What Solid rendering buys you
 
-These four capabilities exist because the grid's rendering is native Solid. None of them are possible in a wrapper.
+These five capabilities exist because the grid's rendering is native Solid. None of them are possible in a wrapper.
 
 ### 1. Async row data, zero ceremony — with stale-while-revalidate refetches
 
@@ -164,6 +164,29 @@ const columnDefs = [{ field: "make", filter: MakeFilter }];
 
 Solid components run once, so the hooks register exactly once — no dependency arrays, no `useCallback`.
 
+### 5. Declarative row data from a Solid store — optimistic CRUD with zero grid API calls
+
+Opt in with the `rowStore` prop: hand the grid a Solid array store (plain, or a `createOptimisticStore` view) and just mutate the store. The adapter projects every mutation into surgical grid transactions — adds/removes paint synchronously, field updates ride the grid's async batch — and optimistic updates revert themselves on failure:
+
+```tsx
+const [rows, setRows] = createStore<Row[]>(initial);
+const [optimisticRows, setOptimisticRows] = createOptimisticStore(rows);
+
+const addRow = action(function* (row: Row) {
+  setOptimisticRows((draft) => {
+    draft.push(row); // shows in the grid INSTANTLY
+  });
+  const saved = (yield api.post(row)) as Row; // background write
+  setRows((draft) => {
+    draft.push(saved); // confirm into the base store
+  });
+}); // failure → the overlay reverts → the row vanishes from the grid by itself
+
+<AgGridSolid rowStore={optimisticRows} getRowId={(p) => p.data.id} columnDefs={cols} />;
+```
+
+`getRowId` (stable, data-derived ids) is required; `rowStore` is mutually exclusive with `rowData` and targets the client-side row model. Imperative transactions remain first-class — the full guide, including the two failure-UX recipes, canonical "saving…" affordances, and **when NOT to use `rowStore`**, is in [docs/row-store.md](./docs/row-store.md).
+
 ## Reactivity doctrine: the grid tracks what it reads
 
 The one-sentence model: **reactive data flows into the grid through options, around it into components — never through config.**
@@ -208,6 +231,7 @@ const App = () => {
 ## Docs
 
 - [Reactivity guide](./docs/reactivity.md) — the full doctrine and footgun catalog.
+- [Row store guide](./docs/row-store.md) — declarative row data via `rowStore`: the contract, both optimistic failure-UX recipes, canonical affordances, performance, and when NOT to use it.
 - [SSR guide](./docs/ssr.md) — the SSR contract, framework setup, and the server-import limitation.
 - AG Grid feature docs: [ag-grid.com](https://www.ag-grid.com/javascript-data-grid/getting-started/) — the grid core is identical across frameworks, so all feature documentation applies. Enterprise features require `ag-grid-enterprise` and a license.
 
@@ -215,10 +239,10 @@ const App = () => {
 
 - **Beta**, tracking the Solid 2.0 beta line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
 - **Versioning:** our major follows AG Grid's major — `36.x` supports AG Grid v36.
-- **Tested:** 147+ tests across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
+- **Tested:** 197 tests across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
+- **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture (requires `solid-js` >= 2.0.0-beta.24).
 - **Coming:**
-  - **Store → transaction adapter** (opt-in `rowStore` prop): feed the grid a Solid store and have mutations translated into minimal `applyTransactionAsync` calls — including transparent support for optimistic updates.
-  - **Benchmarks** — published performance numbers for the adapter vs hand-written transactions vs naive row replacement.
+  - **Expanded benchmarks** — published numbers for the adapter vs hand-written transactions vs naive row replacement (an informational 10k-row adapter benchmark already runs in CI).
 
 ## Credits
 

@@ -98,9 +98,9 @@
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
-    "@solidjs/web": "^2.0.0-beta.21",
+    "@solidjs/web": "^2.0.0-beta.24",
     "ag-grid-community": "^36.0.0",
-    "solid-js": "^2.0.0-beta.21"
+    "solid-js": "^2.0.0-beta.24"
   },
   "packageManager": "pnpm@9.0.0"
 }
