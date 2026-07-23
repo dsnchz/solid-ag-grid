@@ -6,15 +6,13 @@ import type { ICellRendererParams } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import {
   action,
-  affects,
   createMemo,
+  createOptimistic,
   createOptimisticStore,
   createSignal,
   // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
   createStore,
-  deep,
   For,
-  isPending,
   onSettled,
   Show,
 } from "solid-js";
@@ -289,6 +287,15 @@ const OptimisticCrudScenario = () => {
   const [name, setName] = createSignal("");
   const [qty, setQty] = createSignal(1);
 
+  // "saving…" affordance — the canonical co-written optimistic flag (cheatsheet: process
+  // affordances are a co-written createOptimistic(false) flag, NOT isPending): set true
+  // alongside the optimistic write inside each action; it auto-reverts when the transition
+  // settles (success or failure). isPending is the wrong tool here — optimistic writes are
+  // source-of-truth and never read as pending; isPending answers "is a value change
+  // propagating?" (get side), while "saving…" reports a process the user started (post side),
+  // i.e. state you write, not state you probe.
+  const [saving, setSaving] = createOptimistic(false);
+
   const server = async <T,>(result: T): Promise<T> => {
     await sleep(1500);
     if (failNext()) {
@@ -300,7 +307,7 @@ const OptimisticCrudScenario = () => {
 
   // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
   const addRow = action(function* (row: ItemRow) {
-    affects(rows); // declares the in-flight write → isPending(deep(rows)) reads true
+    setSaving(true); // process affordance, co-written with the optimistic write
     setOptimisticRows((draft) => {
       draft.push(row); // shows in the grid INSTANTLY
     });
@@ -312,7 +319,7 @@ const OptimisticCrudScenario = () => {
 
   // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
   const removeRow = action(function* (id: string) {
-    affects(rows);
+    setSaving(true); // co-written flag — auto-reverts at settle
     setOptimisticRows((draft) => draft.filter((row) => row.id !== id)); // gone INSTANTLY
     yield server(id);
     setRows((draft) => draft.filter((row) => row.id !== id));
@@ -329,13 +336,11 @@ const OptimisticCrudScenario = () => {
     setName("");
   };
 
-  // pending affordance: true while an action that declared affects(rows) is awaiting its
-  // server settle. Note: probing the OPTIMISTIC view never reads pending — overlay writes
-  // are revealed immediately (that is their point); the in-flight state lives on the base
-  // store the action declared it will change.
-  const saving = createMemo(() => isPending(() => deep(rows)));
-  // a row is pending iff it is visible optimistically but not yet confirmed into the base
-  // store — the renderer reads the app store directly (Solid-native external reactivity)
+  // per-row status: derived, not probed — a row is "saving" while it is visible optimistically
+  // but not yet confirmed into the base store; the renderer reads the app store directly
+  // (Solid-native external reactivity). The co-written per-row status-TAG variant (a status
+  // field written into the rows themselves) belongs to the base-store recipe — see
+  // docs/row-store.md, "The failure UX is a choice".
   const StatusCell = (props: ICellRendererParams<ItemRow>) => {
     const confirmed = createMemo(() => rows.some((row) => row.id === props.data?.id));
     return (

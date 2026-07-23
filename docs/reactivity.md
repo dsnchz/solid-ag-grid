@@ -21,6 +21,8 @@ const cols = createMemo(() => buildColumns(mode()));
 
 This is identity-diffed per key: to update `rowData`, produce a **new array** (as with every framework binding to AG Grid). Mutating an array in place is invisible.
 
+> **Prefer mutating a store?** The opt-in `rowStore` prop is the declarative alternative for row data specifically: hand the grid a Solid array store (or optimistic view) and mutate it — the adapter projects changes into surgical transactions, including transparent optimistic revert. See the [row store guide](./row-store.md).
+
 **Per-key isolation.** Each prop is tracked and diffed independently. A change to `columnDefs` never re-applies `rowData`; a _pending_ async prop never stalls the others. This isolation is also what makes async data work (below).
 
 ### Doorway 2: around the grid (into your components)
@@ -70,6 +72,8 @@ const rows = createMemo(() => fetchRows(query())); // async — returns a Promis
 When an already-loaded async prop goes pending _again_ (a refetch), the pending key is omitted from the change snapshot, so **no change is applied**: the grid keeps the previous rows, with no overlay flash and no blanking, until the new data resolves. This is pinned by a browser test and treated as a public contract, not an accident.
 
 Need a refetch _indicator_? Drive it yourself — `loading={isPending(() => rows())}` shows the overlay during revalidation too (safe in the grid prop position — the grid guards its own reads). Rendering your own indicator? Wrap it in a `<Loading>` boundary: `isPending` **rethrows while the source is uninitialized**, and an unguarded read outside a boundary defers the entire root mount until the fetch settles (`ASYNC_OUTSIDE_LOADING_BOUNDARY`).
+
+Note the scope of `isPending`: it answers "is a value **change** still in flight for this read?" — the right tool for refetch/revalidation indicators like the one above. It is **not** the tool for "saving…" process affordances around optimistic writes: optimistic writes are source-of-truth and never read as pending. The canonical "saving…" affordance is a co-written `createOptimistic(false)` flag (or a per-row status field) — see [row store guide → Affordances](./row-store.md#affordances-write-state-dont-probe-it).
 
 ### Async cell renderers
 
@@ -192,6 +196,7 @@ Internally, the component reads every grid-option prop inside one diffing comput
 
 ## See also
 
+- [Row store guide](./row-store.md) — declarative row data via `rowStore`, optimistic recipes, canonical affordances, and when NOT to use it
 - [SSR guide](./ssr.md)
 - [README — What Solid rendering buys you](../README.md#what-solid-rendering-buys-you)
 
