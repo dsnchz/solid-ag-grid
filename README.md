@@ -185,7 +185,12 @@ const addRow = action(function* (row: Row) {
 <AgGridSolid rowStore={optimisticRows} getRowId={(p) => p.data.id} columnDefs={cols} />;
 ```
 
-`getRowId` (stable, data-derived ids) is required; `rowStore` is mutually exclusive with `rowData` and targets the client-side row model. Imperative transactions remain first-class — the full guide, including the two failure-UX recipes, canonical "saving…" affordances, and **when NOT to use `rowStore`**, is in [docs/row-store.md](./docs/row-store.md).
+**`rowData` vs `rowStore` — two protocols.** Reading the JSX tells you which protocol the grid speaks:
+
+- **`rowData` is the value protocol.** You hand the grid snapshots; each new value is identity-diffed and applied (React parity). Async values are first-class — a pending value boots the loading overlay and diffs in on resolve. What you must _not_ hand it is a store proxy: `rowData` is snapshot-once, so store mutations never reach the grid (the wrapper warns in that case).
+- **`rowStore` is the subscription protocol.** You hand the grid the store itself; the wrapper watches it and executes transactions on your behalf. Requires `getRowId` (stable, data-derived ids); client-side row model only.
+
+They are mutually exclusive — one writer per grid. Imperative transactions remain first-class — the full guide, including the two failure-UX recipes, canonical "saving…" affordances, and **when NOT to use `rowStore`**, is in [docs/row-store.md](./docs/row-store.md).
 
 ## Reactivity doctrine: the grid tracks what it reads
 

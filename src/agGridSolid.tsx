@@ -3,6 +3,7 @@ import { isServer } from "@solidjs/web";
 import type { Context, GetRowIdParams, GridApi, GridOptions, Module } from "ag-grid-community";
 import { _processOnChange } from "ag-grid-community";
 import {
+  $PROXY,
   createEffect,
   createMemo,
   createSignal,
@@ -74,6 +75,13 @@ const solidPropsNotGridOptions: SolidCompProps = {
 };
 const excludeSolidCompProps = new Set(Object.keys(solidPropsNotGridOptions));
 
+// Solid store proxies answer reads of the $PROXY symbol with themselves; plain arrays/objects
+// answer undefined (same detection the adapter tests use). Used by the rowData guardrail below.
+const isStoreProxy = (value: unknown): boolean =>
+  value !== null &&
+  typeof value === "object" &&
+  (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
+
 export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
@@ -103,14 +111,28 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
   // adapter never exists on the server, preserving the SSR shell contract).
   const rowStore = isServer ? undefined : untrack(() => props.rowStore);
   let rowStoreAdapter: RowStoreAdapter<TData> | undefined;
+  let rowStoreModelMismatch = false;
   if (rowStore) {
     if ("rowData" in props) {
       console.warn(
         "AG Grid: both `rowData` and `rowStore` are provided — `rowData` is ignored; the row store drives row data.",
       );
     }
+    // ADAPTER GUARDRAIL (API RULING, .agent/planning/STATUS.md): rowStore is the subscription
+    // protocol against the CLIENT-SIDE row model only — the other models own their data
+    // pipelines (datasources), and core applyTransaction against them is a silent no-op
+    // (_getClientSideRowModel returns undefined). Resolution mirrors the core's option merge:
+    // the direct prop wins over the gridOptions bag. Mismatch degrades HARDER than missing
+    // getRowId: no adapter AND no static seed — a non-clientSide model can't consume rowData
+    // at all (core logs error #200 if it is even passed), so the store is ignored entirely.
+    const rowModelType = untrack(() => props.rowModelType ?? props.gridOptions?.rowModelType);
     const getRowId = untrack(() => props.getRowId);
-    if (getRowId === undefined) {
+    if (rowModelType !== undefined && rowModelType !== "clientSide") {
+      rowStoreModelMismatch = true;
+      console.warn(
+        `AG Grid: \`rowStore\` requires the client-side row model (\`rowModelType\` is "${rowModelType}") — live row-store projection is disabled and the store is ignored; this row model sources data from its own datasource. Remove \`rowModelType\` to use \`rowStore\`.`,
+      );
+    } else if (getRowId === undefined) {
       // AG Grid's own validation style (cf. the core's notesDataSource getRowId validate):
       // console error, then run degraded — the grid still shows the store's initial snapshot
       console.error(
@@ -169,14 +191,27 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
     // not-ready keys are absent from the creation snapshot and arrive later via the prop-diff
     // effect
     const initialProps = snapshotGridProps(props, excludeProps, true);
+    // ADAPTER GUARDRAIL (API RULING, .agent/planning/STATUS.md): rowData is the VALUE protocol
+    // — you hand snapshots, identity-diffed. A store proxy handed here is read once; mutating
+    // the store never changes the proxy's identity, so mutations NEVER reach the grid. The
+    // check runs only on a successfully-read value (per-key isolation: a pending async rowData
+    // is absent from the snapshot, never a proxy), so plain arrays, undefined, and
+    // async-pending rowData stay silent. When rowStore is active, rowData is excluded above —
+    // the both-props warning already covers that case.
+    if (isStoreProxy(initialProps.rowData)) {
+      console.warn(
+        "AG Grid: `rowData` received a Solid store proxy — `rowData` is snapshot once and identity-diffed, so store mutations will NOT update the grid. Pass plain (or async) values to `rowData`, or use the `rowStore` prop for live store projection.",
+      );
+    }
     const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
     readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
 
-    if (rowStore) {
+    if (rowStore && !rowStoreModelMismatch) {
       // seed rowData from the adapter's creation-time snapshot — the exact baseline its
       // structural diff starts from, so store mutations landing before the grid is ready
       // replay as queued transactions with no double-apply. Degraded mode (missing getRowId,
-      // no adapter) still shows the initial snapshot, statically.
+      // no adapter) still shows the initial snapshot, statically. Row-model mismatch (see the
+      // guardrail above) passes NO rowData at all — a non-clientSide model rejects the option.
       // degraded mode (no getRowId): static seed via the clean whole-array snapshot form
       initialProps.rowData = rowStoreAdapter
         ? rowStoreAdapter.seedRows

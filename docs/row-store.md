@@ -6,6 +6,15 @@ If you only remember one sentence:
 
 > **You mutate the store; the adapter writes the grid. One writer per grid — pick declarative (`rowStore`) or imperative (transactions), never both.**
 
+## `rowData` vs `rowStore` — two protocols
+
+Reading the JSX tells you which protocol the grid speaks:
+
+- **`rowData` — the value protocol.** You hand the grid snapshots; each new value is identity-diffed and applied (React parity). Async values are first-class — a pending value boots the loading overlay and diffs in on resolve. Do _not_ hand it a store proxy: `rowData` is snapshot-once, so store mutations never reach the grid (the wrapper warns in dev when it sees one — that warning means "you wanted `rowStore`").
+- **`rowStore` — the subscription protocol.** You hand the grid the store itself; the wrapper watches it and executes transactions on your behalf. Requires `getRowId` (stable, data-derived ids); **client-side row model only** — under any other `rowModelType` the wrapper warns and ignores the store entirely (non-clientSide models source data from their own datasource).
+
+The split is deliberate (no behavior change sneaks in via the shape of the value): the prop you use, not the value you pass, decides the protocol.
+
 ## The spec, by example
 
 ```tsx
@@ -49,7 +58,7 @@ That is the whole integration. The optimistic transparency is free by constructi
 - **`getRowId` is REQUIRED** — stable, **data-derived** ids. The supported pattern is **client-generated ids (e.g. `crypto.randomUUID()`) that the server persists**: the optimistic row and the confirmed row then share an identity, and the confirm diffs as a no-op instead of a remove+add flicker. Missing `getRowId` is a console error; the grid degrades to a static snapshot of the store.
 - **Never mutate an id in place.** Keys are cached per row _handle_ — a row object whose id field is mutated keeps projecting under its old key. If a row's identity must change, remove it and add a new row.
 - **Mutually exclusive with `rowData`.** Providing both is a console warning and `rowData` is ignored — the store drives row data. The store's identity is captured once, at grid creation, and is fixed for the grid's lifetime.
-- **Client-side row model only** (see case 3 above).
+- **Client-side row model only** (see case 3 above). A non-clientSide `rowModelType` alongside `rowStore` is a console warning and the store is ignored — live projection is disabled and no static seed is passed either (those models reject `rowData` outright).
 - **One writer per grid.** Mixing imperative transactions (or `rowData` swaps via the API) with `rowStore` on the same grid is unsupported — the adapter's structural diff assumes it is the only author of the grid's row set.
 - **The adapter never writes your store.** No id magic, no retries, no error interception, no edit-writeback (a cell edit via `setDataValue` does not flow back into the store). It only reads — plain snapshots cross the boundary, never proxies.
 - **Settles are silent.** A confirm that lands the same data your optimistic write already showed is (by design) a no-op. If the server computes extra fields (timestamps, versions), write them into the base row _after_ the action resolves — a real field write projects as an update.
