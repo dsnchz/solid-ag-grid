@@ -120,7 +120,7 @@ describe("perf comparison: Solid vs vanilla rendering", () => {
         const solidMed = median(s.solid);
         const vanillaMed = median(s.vanilla);
         const ratio = (solidMed / Math.max(1, vanillaMed)).toFixed(2);
-        // eslint-disable-next-line no-console -- informational benchmark output
+
         console.warn(
           `PERF [${shape.name}] ${op}: solid ${solidMed}ms vs vanilla ${vanillaMed}ms (x${ratio}) [n=${ITERATIONS}, median]`,
         );

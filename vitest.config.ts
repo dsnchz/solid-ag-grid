@@ -1,5 +1,5 @@
+import solid from "@solidjs/vite-plugin";
 import { playwright } from "@vitest/browser-playwright";
-import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

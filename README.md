@@ -12,27 +12,27 @@ Every header, row, and cell in the grid is rendered by Solid — this is a deep 
 
 Because the rendering layer is Solid, your components are real Solid components living in the real reactive graph: cell renderers can read app signals and update with zero grid API calls, async data suspends into the grid's loading states, and refetches get stale-while-revalidate semantics for free.
 
-> **Status: beta.** Targets **AG Grid v36** and **Solid 2.0 (beta)** only. Published under the `next` dist-tag until Solid 2.0 goes stable. See [Status & roadmap](#status--roadmap).
+> **Status: release candidate.** Targets **AG Grid v36** and **Solid 2.0 (RC)** only. Published under the `next` dist-tag until Solid 2.0 goes stable. See [Status & roadmap](#status--roadmap).
 
 ## Installation
 
 ```bash
-npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.24 @solidjs/web@2.0.0-beta.24
+npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.0 @solidjs/web@2.0.0-rc.0
 # or
-pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-beta.24 @solidjs/web@2.0.0-beta.24
+pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.0 @solidjs/web@2.0.0-rc.0
 ```
 
 Peer dependencies:
 
-| Package             | Version        | Notes                                                                                 |
-| ------------------- | -------------- | ------------------------------------------------------------------------------------- |
-| `ag-grid-community` | `^36.0.0`      | The grid core. Our major always tracks AG Grid's major.                               |
-| `solid-js`          | `2.0.0-beta.x` | **Solid 2.0 beta required — pin the exact beta version.** Solid 1.x is not supported. |
-| `@solidjs/web`      | `2.0.0-beta.x` | Pin to the same beta as `solid-js`.                                                   |
+| Package             | Version       | Notes                                                           |
+| ------------------- | ------------- | --------------------------------------------------------------- |
+| `ag-grid-community` | `^36.0.0`     | The grid core. Our major always tracks AG Grid's major.         |
+| `solid-js`          | `^2.0.0-rc.0` | **Solid 2.0 RC or later required.** Solid 1.x is not supported. |
+| `@solidjs/web`      | `^2.0.0-rc.0` | Same version as `solid-js`.                                     |
 
 Two things worth knowing:
 
-- **Pin your Solid betas exactly** (no `^`). Solid 2.0 betas ship every few days and can change timing semantics; this package is developed and tested against a pinned beta (currently `2.0.0-beta.24`, which the `rowStore` adapter's delta capture also requires). We re-verify and bump deliberately.
+- **Solid 2.0 is API-frozen as of the RC**, so ranged versions (`^2.0.0-rc.0`) are now safe — the exact-pin discipline from the beta era is no longer required. This package is developed and tested against `2.0.0-rc.0`; we re-verify each RC deliberately.
 - **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package — it installs automatically; you never interact with it.
 
 Your `tsconfig.json` / bundler must use Solid 2.0's JSX runtime:
@@ -242,10 +242,10 @@ const App = () => {
 
 ## Status & roadmap
 
-- **Beta**, tracking the Solid 2.0 beta line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
+- **Release candidate**, tracking the Solid 2.0 RC line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
 - **Versioning:** our major follows AG Grid's major — `36.x` supports AG Grid v36.
 - **Tested:** 197 tests across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
-- **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture (requires `solid-js` >= 2.0.0-beta.24).
+- **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture.
 - **Coming:**
   - **Expanded benchmarks** — published numbers for the adapter vs hand-written transactions vs naive row replacement (an informational 10k-row adapter benchmark already runs in CI).
 

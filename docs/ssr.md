@@ -43,7 +43,7 @@ The package's `exports` map ships three things:
 }
 ```
 
-Solid-aware bundlers (`vite-plugin-solid`, and therefore SolidStart and TanStack Start) resolve the `solid` condition and compile the shipped source **per environment** — DOM output for the client bundle, SSR output for the server bundle. That is how the same component can render a shell on the server and a live grid on the client.
+Solid-aware bundlers (`@solidjs/vite-plugin` — including its start mode — and TanStack Start) resolve the `solid` condition and compile the shipped source **per environment** — DOM output for the client bundle, SSR output for the server bundle. That is how the same component can render a shell on the server and a live grid on the client.
 
 ## Known limitation: direct Node import of the compiled build
 
@@ -60,7 +60,7 @@ You will hit this only if you:
 
 **Workarounds:**
 
-1. **Use a Solid SSR setup** (SolidStart, TanStack Start, or vite-plugin-solid with SSR) — the `solid` condition routes around the problem entirely. This is the supported path.
+1. **Use a Solid SSR setup** (`@solidjs/vite-plugin` with `{ start: true, ssr: true }`, or TanStack Start) — the `solid` condition routes around the problem entirely. This is the supported path.
 2. If your tool lets you configure export conditions, add `"solid"` to the server-side resolution conditions so the shipped source is compiled for SSR.
 3. Otherwise, lazy-import the package from client-only code paths (`clientOnly()`, dynamic `import()` inside `onSettled`/event handlers).
 

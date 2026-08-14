@@ -218,7 +218,7 @@ The adapter does per-row work, not per-array work:
 
 Measured (informational browser benchmark, 10,000 rows, real Chromium — `test/browser/rowStorePerf.browser.test.tsx`): a single-row **add** paints in **~15 ms** store-write→painted-row; a single-row **field update** paints in **~58 ms** store-write→painted-cell — a figure that _includes_ the grid's own `applyTransactionAsync` batching window (~50 ms by default), i.e. it is dominated by the grid's deliberate batching, not adapter CPU. The same benchmark asserts the updates are surgical: every other rendered row keeps its exact DOM elements.
 
-> **Requires `solid-js` >= 2.0.0-beta.24.** Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since beta.24's snapshot fix (earlier betas could leak a live proxy across the boundary). This package pins and tests against beta.24.
+> Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.0-rc.0` peer floor. Verified against each Solid release we bump to.
 
 ## See also
 
