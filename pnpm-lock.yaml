@@ -63,14 +63,14 @@ importers:
         specifier: ^29.1.1
         version: 29.1.1
       oxfmt:
-        specifier: ^0.60.0
+        specifier: 0.60.0
         version: 0.60.0
       playwright:
         specifier: ^1.61.1
         version: 1.61.1
       solid-checker:
         specifier: 0.2.2
-        version: 0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+        version: 0.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
       solid-js:
         specifier: 2.0.0-rc.0
         version: 2.0.0-rc.0
@@ -2142,21 +2142,21 @@ snapshots:
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/core@1.11.2':
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
       tslib: 2.8.1
+    optional: true
 
   '@emnapi/runtime@1.11.1':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/runtime@1.11.2':
     dependencies:
       tslib: 2.8.1
+    optional: true
 
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
@@ -2254,13 +2254,13 @@ snapshots:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
       '@tybys/wasm-util': 0.10.3
-    optional: true
 
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     dependencies:
       '@emnapi/core': 1.11.2
       '@emnapi/runtime': 1.11.2
       '@tybys/wasm-util': 0.10.3
+    optional: true
 
   '@oxc-project/types@0.139.0': {}
 
@@ -3385,16 +3385,16 @@ snapshots:
       mrmime: 2.0.1
       totalist: 3.0.1
 
-  solid-checker-wasm@0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2):
+  solid-checker-wasm@0.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1):
     dependencies:
-      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  solid-checker@0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2):
+  solid-checker@0.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1):
     dependencies:
-      solid-checker-wasm: 0.2.2(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+      solid-checker-wasm: 0.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     optionalDependencies:
       '@solid-checker/binding-darwin-arm64': 0.2.2
       '@solid-checker/binding-darwin-x64': 0.2.2
