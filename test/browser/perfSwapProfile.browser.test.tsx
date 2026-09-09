@@ -14,7 +14,8 @@ import AgGridSolid from "../../src/index";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const ROWS = 20_000;
-const COLS = 10;
+const SHAPES = [10, 100] as const;
+let COLS = 10;
 const SWAPS = 20;
 const ROUNDS = 5;
 
@@ -110,58 +111,60 @@ async function mount(renderer: "solid" | "vanilla") {
 const ms = (us: number) => (us / 1000).toFixed(2);
 
 describe("row swap CPU profile: dispose vs mount (diagnostic)", () => {
-  it("20k x 10, 20 swaps x 5 rounds per renderer: self time by owner·side and top functions", async () => {
+  it("20k x {10,100}, 20 swaps x 5 rounds per renderer: self time by owner·side and top functions", async () => {
     const session = cdp();
     const report: string[] = [];
-    for (const renderer of ["solid", "vanilla"] as const) {
-      const { api, host, scrollTo } = await mount(renderer);
-      // warm the swap path before profiling
-      for (let i = 1; i <= 5; i++) {
-        scrollTo(i * 700);
-        await settle();
-      }
-      const buckets = new Map<string, number>();
-      const fns = new Map<string, number>();
-      let total = 0;
-      let wall = 0;
-      const stride = Math.floor(ROWS / (SWAPS + 1));
-      await session.send("Profiler.enable");
-      await session.send("Profiler.setSamplingInterval", { interval: 50 });
-      for (let round = 0; round < ROUNDS; round++) {
-        await session.send("Profiler.start");
-        const t0 = performance.now();
-        for (let i = 1; i <= SWAPS; i++) {
-          const target = ((i + round * 3) % SWAPS) * stride + stride;
-          scrollTo(target);
+    for (const cols of SHAPES)
+      for (const renderer of ["solid", "vanilla"] as const) {
+        COLS = cols;
+        const { api, host, scrollTo } = await mount(renderer);
+        // warm the swap path before profiling
+        for (let i = 1; i <= 5; i++) {
+          scrollTo(i * 700);
           await settle();
-          expect(host.querySelector(`.ag-row[row-index="${target}"] .ag-cell`)).not.toBeNull();
         }
-        wall += performance.now() - t0;
-        const { profile } = (await session.send("Profiler.stop")) as { profile: Profile };
-        total += aggregate(profile, buckets, fns);
+        const buckets = new Map<string, number>();
+        const fns = new Map<string, number>();
+        let total = 0;
+        let wall = 0;
+        const stride = Math.floor(ROWS / (SWAPS + 1));
+        await session.send("Profiler.enable");
+        await session.send("Profiler.setSamplingInterval", { interval: 50 });
+        for (let round = 0; round < ROUNDS; round++) {
+          await session.send("Profiler.start");
+          const t0 = performance.now();
+          for (let i = 1; i <= SWAPS; i++) {
+            const target = ((i + round * 3) % SWAPS) * stride + stride;
+            scrollTo(target);
+            await settle();
+            expect(host.querySelector(`.ag-row[row-index="${target}"] .ag-cell`)).not.toBeNull();
+          }
+          wall += performance.now() - t0;
+          const { profile } = (await session.send("Profiler.stop")) as { profile: Profile };
+          total += aggregate(profile, buckets, fns);
+        }
+        await session.send("Profiler.disable");
+        const swaps = SWAPS * ROUNDS;
+        report.push(
+          `\n===== ${renderer.toUpperCase()} cols=${cols}  per swap: wall ${(wall / swaps).toFixed(2)} ms | sampled ${ms(total / swaps)} ms`,
+        );
+        const side = { dispose: 0, mount: 0, unclassified: 0 };
+        for (const [b, us] of [...buckets].sort((a, b) => b[1] - a[1])) {
+          report.push(`  ${b.padEnd(32)} ${ms(us / swaps).padStart(7)} ms/swap`);
+          const s = b.split(" · ")[1] as keyof typeof side | undefined;
+          if (s && s in side) side[s] += us;
+        }
+        report.push(
+          `  SIDE TOTALS per swap: dispose ${ms(side.dispose / swaps)} | mount ${ms(side.mount / swaps)} | unclassified ${ms(side.unclassified / swaps)}`,
+        );
+        report.push("  top functions (self, ms per swap):");
+        for (const [k, us] of [...fns].sort((a, b) => b[1] - a[1]).slice(0, 36)) {
+          if (us / swaps < 15) break;
+          report.push(`    ${ms(us / swaps).padStart(6)}  ${k}`);
+        }
+        api.destroy?.();
+        host.remove();
       }
-      await session.send("Profiler.disable");
-      const swaps = SWAPS * ROUNDS;
-      report.push(
-        `\n===== ${renderer.toUpperCase()}  per swap: wall ${(wall / swaps).toFixed(2)} ms | sampled ${ms(total / swaps)} ms`,
-      );
-      const side = { dispose: 0, mount: 0, unclassified: 0 };
-      for (const [b, us] of [...buckets].sort((a, b) => b[1] - a[1])) {
-        report.push(`  ${b.padEnd(32)} ${ms(us / swaps).padStart(7)} ms/swap`);
-        const s = b.split(" · ")[1] as keyof typeof side | undefined;
-        if (s && s in side) side[s] += us;
-      }
-      report.push(
-        `  SIDE TOTALS per swap: dispose ${ms(side.dispose / swaps)} | mount ${ms(side.mount / swaps)} | unclassified ${ms(side.unclassified / swaps)}`,
-      );
-      report.push("  top functions (self, ms per swap):");
-      for (const [k, us] of [...fns].sort((a, b) => b[1] - a[1]).slice(0, 36)) {
-        if (us / swaps < 15) break;
-        report.push(`    ${ms(us / swaps).padStart(6)}  ${k}`);
-      }
-      api.destroy?.();
-      host.remove();
-    }
     console.warn("SWAPPROFILE" + report.join("\n"));
   }, 300_000);
 });
