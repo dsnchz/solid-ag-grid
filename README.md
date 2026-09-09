@@ -17,9 +17,9 @@ Because the rendering layer is Solid, your components are real Solid components 
 ## Installation
 
 ```bash
-npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.0 @solidjs/web@2.0.0-rc.0
+npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 # or
-pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.0 @solidjs/web@2.0.0-rc.0
+pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 ```
 
 Peer dependencies:
@@ -27,12 +27,12 @@ Peer dependencies:
 | Package             | Version       | Notes                                                           |
 | ------------------- | ------------- | --------------------------------------------------------------- |
 | `ag-grid-community` | `^36.0.0`     | The grid core. Our major always tracks AG Grid's major.         |
-| `solid-js`          | `^2.0.0-rc.0` | **Solid 2.0 RC or later required.** Solid 1.x is not supported. |
-| `@solidjs/web`      | `^2.0.0-rc.0` | Same version as `solid-js`.                                     |
+| `solid-js`          | `^2.0.0-rc.7` | **Solid 2.0 RC or later required.** Solid 1.x is not supported. |
+| `@solidjs/web`      | `^2.0.0-rc.7` | Same version as `solid-js`.                                     |
 
 Two things worth knowing:
 
-- **Solid 2.0 is API-frozen as of the RC**, so ranged versions (`^2.0.0-rc.0`) are now safe — the exact-pin discipline from the beta era is no longer required. This package is developed and tested against `2.0.0-rc.0`; we re-verify each RC deliberately.
+- **Solid 2.0 is API-frozen as of the RC**, so ranged versions (`^2.0.0-rc.7`) are now safe — the exact-pin discipline from the beta era is no longer required. This package is developed and tested against `2.0.0-rc.7`; we re-verify each RC deliberately.
 - **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package — it installs automatically; you never interact with it.
 
 Your `tsconfig.json` / bundler must use Solid 2.0's JSX runtime:
