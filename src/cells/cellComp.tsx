@@ -10,7 +10,7 @@ import type {
   RowDragComp,
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
-import { _removeFromParent, CssClassManager } from "ag-stack";
+import { _addStylesToElement, _removeFromParent, CssClassManager } from "ag-stack";
 import {
   createEffect,
   createMemo,
@@ -74,8 +74,6 @@ const CellComp = (props: CellCompProps) => {
   // bumped by CellEditorComponentProxy's refreshProps — drives the reactive editor-props
   // spread in jsxEditorProxy (Solid analog of React's setRenderKey re-render on refreshProps)
   const [editorParamsVersion, setEditorParamsVersion] = createSignal(0);
-
-  const [userStyles, setUserStyles] = createSignal<CellStyle>();
 
   const [includeSelection, setIncludeSelection] = createSignal<boolean>(false);
   const [includeRowDrag, setIncludeRowDrag] = createSignal<boolean>(false);
@@ -193,7 +191,8 @@ const CellComp = (props: CellCompProps) => {
 
     const compProxy: ICellComp = {
       toggleCss: (name, on) => cssManager.toggleCss(name, on),
-      setUserStyles: (styles: CellStyle) => setUserStyles(styles),
+      // additive direct style write, like vanilla (core-jurisdiction attribute law, see RowComp)
+      setUserStyles: (styles: CellStyle) => _addStylesToElement(eGui!, styles),
       getFocusableElement: () => eGui!,
 
       setIncludeSelection: (include) => setIncludeSelection(include),
@@ -621,7 +620,6 @@ const CellComp = (props: CellCompProps) => {
         eGui = el;
         init();
       }}
-      style={userStyles()}
       role={cellAriaRole}
       col-id={colIdSanitised}
     >

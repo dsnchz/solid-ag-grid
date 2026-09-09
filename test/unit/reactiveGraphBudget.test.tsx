@@ -94,9 +94,12 @@ const measure = async (rows: number, cols: number) => {
 // The budget is the CEILING the implementation must stay under — the counts are deterministic,
 // so it is pinned exactly. Tighten it when the mount gets cheaper; never raise it without a
 // design note in ARCHITECTURE.md.
+//   2026-09-09 imperative attribute/style writes: cell 25 / 9, row 32 / 5
+//     (row-index, row-id, row-business-key, top, transform, user row/cell styles: setter →
+//      DOM, like vanilla; static initial attributes)
 const BUDGET = {
-  cell: { computations: 26, signals: 10 },
-  row: { computations: 34, signals: 11 },
+  cell: { computations: 25, signals: 9 },
+  row: { computations: 32, signals: 5 },
 };
 
 describe("reactive graph budget (dev owner-tree walk)", () => {

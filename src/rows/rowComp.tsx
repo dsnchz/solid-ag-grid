@@ -1,4 +1,3 @@
-import type { JSX } from "@solidjs/web";
 import type {
   CellCtrl,
   HorizontalSection,
@@ -8,11 +7,10 @@ import type {
   IRowComp,
   RowContainerType,
   RowCtrl,
-  RowStyle,
   UserCompDetails,
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
-import { CssClassManager } from "ag-stack";
+import { _addStylesToElement, CssClassManager } from "ag-stack";
 import {
   createEffect,
   createMemo,
@@ -51,24 +49,19 @@ const RowComp = (props: RowCompProps) => {
   // async rendering it's possible for the row to be destroyed before Solid has rendered it.
   const isDisplayed = rowCtrl.rowNode.displayed;
 
-  // signals seeded from the ctrl (Open question 7): the first template render already carries
-  // index/top/transform/cells, so there is no empty-row flash and enter animations get their
-  // starting values
-  const [rowIndex, setRowIndex] = createSignal<string | null>(
-    isDisplayed ? rowCtrl.rowNode.getRowIndexString() : null,
-  );
-  const [rowId, setRowId] = createSignal<string | null>(rowCtrl.rowId);
-  const [rowBusinessKey, setRowBusinessKey] = createSignal<string | null>(rowCtrl.businessKey);
-  const [userStyles, setUserStyles] = createSignal<RowStyle | undefined>(rowCtrl.rowStyles);
-
-  // these styles have initial values, so the element is placed into the DOM with them, rather
-  // than a transition getting applied.
-  const [top, setTop] = createSignal<string | undefined>(
-    isDisplayed ? rowCtrl.getInitialRowTop() : undefined,
-  );
-  const [transform, setTransform] = createSignal<string | undefined>(
-    isDisplayed ? rowCtrl.getInitialTransform() : undefined,
-  );
+  // CORE-JURISDICTION ATTRIBUTES ARE IMPERATIVE WRITES (per-row diet; same law as toggleCss /
+  // CssClassManager): row-index, row-id, row-business-key, top, transform and the user row
+  // styles each have exactly ONE writer — the ctrl, through the compProxy setter — and nothing
+  // in this component derives from them. A signal + binding effect per attribute (React's
+  // shape, where React owns the DOM) is pure overhead here: the setter writes the element,
+  // exactly as vanilla's RowComp does. Seeded from the ctrl (Open question 7): the first
+  // template render already carries index/top/transform, so there is no empty-row flash and
+  // enter animations get their starting values — static initial attributes, then pushes.
+  const initialRowIndex = isDisplayed ? rowCtrl.rowNode.getRowIndexString() : null;
+  const initialRowId = rowCtrl.rowId;
+  const initialBusinessKey = rowCtrl.businessKey;
+  const initialTop = isDisplayed ? rowCtrl.getInitialRowTop() : undefined;
+  const initialTransform = isDisplayed ? rowCtrl.getInitialTransform() : undefined;
 
   let domOrder = rowCtrl.getDomOrder();
   // Seeded so bulk-add doesn't flash empty rows; getInitialCellCtrls returns null when creation
@@ -133,21 +126,29 @@ const RowComp = (props: RowCompProps) => {
       return;
     }
     compBean = context.createBean(new _EmptyBean());
+    // user row styles are additive, like vanilla (_addStylesToElement never removes keys)
+    _addStylesToElement(eRef, rowCtrl.rowStyles);
+    const setAttr = (name: string, value: string | null) => {
+      if (value == null) {
+        eRef.removeAttribute(name);
+      } else {
+        eRef.setAttribute(name, value);
+      }
+    };
 
     const compProxy: IRowComp = {
-      // the rowTop is managed by state, instead of direct style manipulation by rowCtrl (like
-      // all the other styles), as we need an initial value when it's first placed into the DOM
-      // for animation to work.
-      setTop: (value) => setTop(value),
-      setTransform: (value) => setTransform(value),
+      // top/transform: initial values are static attributes of the first render (animation
+      // starting point); every later value is a direct style write, like vanilla
+      setTop: (value) => (eRef.style.top = value ?? ""),
+      setTransform: (value) => (eRef.style.transform = value ?? ""),
 
       toggleCss: (name, on) => cssManager.toggleCss(name, on),
 
       setDomOrder: (value) => (domOrder = value),
-      setRowIndex: (value) => setRowIndex(value),
-      setRowId: (value) => setRowId(value),
-      setRowBusinessKey: (value) => setRowBusinessKey(value),
-      setUserStyles: (styles) => setUserStyles(styles),
+      setRowIndex: (value) => setAttr("row-index", value),
+      setRowId: (value) => setAttr("row-id", value),
+      setRowBusinessKey: (value) => setAttr("row-business-key", value),
+      setUserStyles: (styles) => _addStylesToElement(eRef, styles),
       // if we don't maintain the order, then cols will be ripped out of and into the dom when
       // cols are reordered, which would stop the CSS transitions from working
       setCellCtrls: (next, useFlushSync) => {
@@ -399,12 +400,6 @@ const RowComp = (props: RowCompProps) => {
     );
   }
 
-  const rowStyles = createMemo(() => {
-    const res: JSX.CSSProperties = { top: top(), transform: transform() };
-    Object.assign(res, userStyles());
-    return res;
-  });
-
   const showCells = createMemo(() => !isFullWidth && cellCtrls() != null);
   // the pinned/scrolling lanes render for normal cell rows AND embedded full-width rows
   const showLanes = createMemo(() => showCells() || showEmbeddedFullWidth);
@@ -500,10 +495,10 @@ const RowComp = (props: RowCompProps) => {
     <div
       ref={setRef}
       role="row"
-      style={rowStyles()}
-      row-index={rowIndex()}
-      row-id={rowId()}
-      row-business-key={rowBusinessKey()}
+      style={{ top: initialTop, transform: initialTransform }}
+      row-index={initialRowIndex}
+      row-id={initialRowId}
+      row-business-key={initialBusinessKey}
     >
       {/* the lane getters must return undefined once a lane unmounts (React nulls refs on
           unmount; Solid refs don't re-run) — the core reads them for embedded full-width
