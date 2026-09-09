@@ -39,7 +39,7 @@ export const LicenseContext = createContext<Accessor<string | null>>(() => null)
  * This is an alternative to providing modules globally via `ModuleRegistry.registerModules()` and setting the
  * license key via `LicenseManager.setLicenseKey()`.
  */
-export const AgGridProvider = (props: AgGridProviderProps) => {
+export const AgGridProvider = (props: AgGridProviderProps): JSX.Element => {
   const parentModules = useContext(ModulesContext);
   const parentLicenseKey = useContext(LicenseContext);
 

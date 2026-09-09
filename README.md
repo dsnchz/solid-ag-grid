@@ -4,6 +4,8 @@
 
 # @dschz/solid-ag-grid
 
+[![npm](https://img.shields.io/npm/v/@dschz/solid-ag-grid/next?label=npm%20%40next)](https://www.npmjs.com/package/@dschz/solid-ag-grid) [![JSR](https://jsr.io/badges/@dschz/solid-ag-grid)](https://jsr.io/@dschz/solid-ag-grid)
+
 **AG Grid v36 with 100% SolidJS rendering.**
 
 Every header, row, and cell in the grid is rendered by Solid — this is a deep integration on the same architecture as `ag-grid-react`, not a thin wrapper around the JavaScript grid. Outside of AG Grid's own monorepo, this is the only framework-native AG Grid integration in existence.
@@ -21,6 +23,8 @@ npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.7 @solidjs/
 # or
 pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 ```
+
+Also available on [JSR](https://jsr.io/@dschz/solid-ag-grid) as TypeScript source (`npx jsr add @dschz/solid-ag-grid`).
 
 Peer dependencies:
 

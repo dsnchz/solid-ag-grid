@@ -82,7 +82,7 @@ const isStoreProxy = (value: unknown): boolean =>
   typeof value === "object" &&
   (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
 
-export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>) => {
+export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
 
