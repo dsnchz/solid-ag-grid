@@ -54,7 +54,10 @@ export default defineConfig({
         },
       },
       {
-        // PERF PROJECT — production posture. Benchmarks must run Solid's PROD runtime and
+        // PERF PROJECT — production posture. NOT part of `pnpm test` / CI (`pnpm test:perf`,
+        // .github/workflows/perf.yml weekly + on demand): five minutes of timing output nobody
+        // reads on a runner whose numbers mean nothing, and the CDP diagnostics belong to a
+        // deliberate run on a known machine. Benchmarks must run Solid's PROD runtime and
         // prod-compiled JSX: the dev build carries attribution/diagnostics instrumentation
         // that folds out of prod (solid-flow measured ~30% on rc.2 from dev instrumentation
         // alone; rc.7 carries far more), and vanilla AG Grid pays no such tax, so dev-build

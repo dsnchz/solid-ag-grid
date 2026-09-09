@@ -1,0 +1,28 @@
+name: perf
+
+# The perf vitest project (production posture: comparison harness, boot latency, CDP profiles)
+# is deliberately NOT part of `pnpm test`. Runs weekly so the harness cannot rot, and on
+# demand for a known machine. Numbers are informational; the assertions (prod runtime loaded,
+# swap inside the CPU window, grids alive) are the regression guards.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium --with-deps
+      - run: pnpm test:perf 2>&1 | tee perf.log
+      - name: Summary
+        if: always()
+        run: grep -E "PERF|GRAPH" perf.log | sed 's/^.*\[console.warn\] //' >> "$GITHUB_STEP_SUMMARY" || true
