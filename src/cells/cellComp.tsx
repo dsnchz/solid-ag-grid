@@ -325,8 +325,6 @@ const CellComp = (props: CellCompProps) => {
         return;
       }
 
-      rowDragComp?.refreshVisibility();
-
       // if different Cell Renderer, then do nothing, as renderer will be recreated
       if (oldCompDetails.componentClass != newCompDetails.componentClass) {
         return;
@@ -343,62 +341,6 @@ const CellComp = (props: CellCompProps) => {
         // contract kept for GroupCellRenderer parity — see the React source)
         setRenderKey((prev) => prev + 1);
       }
-    },
-  );
-
-  // Tool widgets (row drag / dnd source / selection checkbox) are JS component beans. React
-  // creates them in the cell-wrapper ref callback and inserts 'afterbegin' (final DOM order:
-  // rowDrag, dnd, selection, value) — Solid refs don't re-run on signal changes, so the
-  // instance lifecycle lives here and the getGui() elements insert as derived JSX ahead of the
-  // value span in that same order (§5.1: derived JSX insertion beats effect-appendChild).
-  // Effect classification: signal-keyed lifecycle of non-Solid instances.
-  // internal bridge signal: the cleanup below also runs at disposal (owned scope, where
-  // writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
-  const [toolWidgets, setToolWidgets] = createSignal<ToolWidgetElements | undefined>(undefined, {
-    ownedWrite: true,
-  });
-  createEffect(
-    () => ({
-      show: showCellWrapper(),
-      selection: includeSelection(),
-      dnd: includeDndSource(),
-      rowDrag: includeRowDrag(),
-    }),
-    (include) => {
-      if (!include.show || !cellCtrl.isAlive() || context.isDestroyed()) {
-        return;
-      }
-
-      const comps: AgComponent[] = [];
-      const widgets: ToolWidgetElements = {};
-      const addComp = (slot: keyof ToolWidgetElements, comp: AgComponent | undefined) => {
-        if (comp) {
-          comps.push(comp);
-          widgets[slot] = comp.getGui();
-        }
-      };
-
-      if (include.selection) {
-        addComp("selection", cellCtrl.createSelectionCheckbox());
-      }
-      if (include.dnd) {
-        addComp("dnd", cellCtrl.createDndSource());
-      }
-      if (include.rowDrag) {
-        rowDragComp = cellCtrl.createRowDragComp();
-        addComp("rowDrag", rowDragComp);
-        rowDragComp?.refreshVisibility();
-      }
-      setToolWidgets(widgets);
-
-      return () => {
-        setToolWidgets(undefined);
-        rowDragComp = undefined;
-        for (const comp of comps) {
-          // Solid removes the inserted elements when the signal clears / the wrapper unmounts
-          context.destroyBean(comp);
-        }
-      };
     },
   );
 
@@ -571,6 +513,77 @@ const CellComp = (props: CellCompProps) => {
           eCellWrapper = undefined;
           cssManager.toggleCss("ag-cell-value", true);
         });
+
+        // Tool widgets (row drag / dnd source / selection checkbox) are JS component beans.
+        // React creates them in the cell-wrapper ref callback and inserts 'afterbegin' (final
+        // DOM order: rowDrag, dnd, selection, value) — Solid refs don't re-run on signal
+        // changes, so the instance lifecycle is an effect and the getGui() elements insert as
+        // derived JSX ahead of the value span in that same order (§5.1: derived JSX insertion
+        // beats effect-appendChild). Effect classification: signal-keyed lifecycle of
+        // non-Solid instances — SCOPED to the wrapper branch (per-cell diet 2/5): the wrapper
+        // exists exactly when tools (or forceWrapper) do, so a plain cell never creates this.
+        // internal bridge signal: the cleanup also runs at branch disposal (owned scope, where
+        // writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
+        const [toolWidgets, setToolWidgets] = createSignal<ToolWidgetElements | undefined>(
+          undefined,
+          { ownedWrite: true },
+        );
+        createEffect(
+          () => ({
+            selection: includeSelection(),
+            dnd: includeDndSource(),
+            rowDrag: includeRowDrag(),
+          }),
+          (include) => {
+            if (!cellCtrl.isAlive() || context.isDestroyed()) {
+              return;
+            }
+
+            const comps: AgComponent[] = [];
+            const widgets: ToolWidgetElements = {};
+            const addComp = (slot: keyof ToolWidgetElements, comp: AgComponent | undefined) => {
+              if (comp) {
+                comps.push(comp);
+                widgets[slot] = comp.getGui();
+              }
+            };
+
+            if (include.selection) {
+              addComp("selection", cellCtrl.createSelectionCheckbox());
+            }
+            if (include.dnd) {
+              addComp("dnd", cellCtrl.createDndSource());
+            }
+            if (include.rowDrag) {
+              rowDragComp = cellCtrl.createRowDragComp();
+              addComp("rowDrag", rowDragComp);
+              rowDragComp?.refreshVisibility();
+            }
+            setToolWidgets(widgets);
+
+            return () => {
+              setToolWidgets(undefined);
+              rowDragComp = undefined;
+              for (const comp of comps) {
+                // Solid removes the inserted elements when the signal clears / the wrapper
+                // unmounts
+                context.destroyBean(comp);
+              }
+            };
+          },
+        );
+        // the drag handle re-evaluates its visibility when the cell's compDetails change
+        // (React: in the refresh layout effect, for every cell; here only a drag cell pays)
+        if (untrack(includeRowDrag)) {
+          createEffect(
+            () => renderDetails()?.compDetails,
+            (compDetails, prev) => {
+              if (prev != null && compDetails != null && compDetails !== prev) {
+                rowDragComp?.refreshVisibility();
+              }
+            },
+          );
+        }
         return (
           <div
             class="ag-cell-wrapper"
