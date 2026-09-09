@@ -11,9 +11,10 @@ describe("perf harness posture", () => {
       DEV,
       "solid-js resolved to its dev build — see the perf project in vitest.config.ts",
     ).toBeUndefined();
-    // (import.meta.env.MODE stays "test" under Vitest regardless of project; NODE_ENV is the
-    // define the perf project sets, and DEV === undefined proves the resolved runtime)
-    expect(process.env.NODE_ENV).toBe("production");
+    // (import.meta.env.MODE stays "test" under Vitest regardless of project, and NODE_ENV is
+    // deliberately NOT defined per project — a process.env define leaks into the shared Node
+    // process and flips the jsdom unit project onto the prod build; DEV === undefined is the
+    // proof that the resolved runtime is prod)
     // hidden tabs suspend rAF / ResizeObserver and look exactly like a regression
     expect(document.visibilityState).toBe("visible");
   });

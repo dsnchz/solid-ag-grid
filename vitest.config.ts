@@ -57,15 +57,17 @@ export default defineConfig({
         // that folds out of prod (solid-flow measured ~30% on rc.2 from dev instrumentation
         // alone; rc.7 carries far more), and vanilla AG Grid pays no such tax, so dev-build
         // numbers understate the renderer against its own baseline. No `extends`: this
-        // project brings its own solid() with dev injection off, and `mode: "production"`
-        // resolves Vite's `development|production` default condition to production.
-        // test/browser/perfHarness.browser.test.tsx pins that the prod runtime really loaded.
-        mode: "production",
+        // project brings its own solid() with dev injection off and names its resolve
+        // conditions outright. NOT `mode: "production"`: Vite applies that to
+        // process.env.NODE_ENV for the whole Node process, which silently switched the jsdom
+        // unit project onto Solid's prod build (no DEV, no diagnostics) — project-scoped
+        // resolve conditions do not leak. test/browser/perfHarness.browser.test.tsx pins that
+        // the prod runtime really loaded here; test/unit/reactiveGraphBudget.test.tsx needs DEV
+        // and therefore pins the inverse for the unit project.
         plugins: [solid({ dev: false, hot: false })],
-        // explicit: Vitest pins its own mode, so Vite's `development|production` default token
-        // would still resolve to development — name the conditions outright
         resolve: { conditions: ["production", "browser", "module", "default"] },
-        define: { "process.env.NODE_ENV": JSON.stringify("production") },
+        // no `define` of process.env.NODE_ENV either: Vitest applies process.env defines to the
+        // shared Node process, which had the same effect
         test: {
           name: "perf",
           include: PERF_TESTS,
