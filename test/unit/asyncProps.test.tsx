@@ -1,4 +1,4 @@
-import { createMemo, createRoot, flush, NotReadyError } from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal, flush, NotReadyError } from "solid-js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -112,6 +112,60 @@ describe("asyncProps (per-key isolation)", () => {
     const snapshot = snapshotGridProps(props, new Set(["class"]));
 
     expect(snapshot).toEqual({ rowData: [1, 2] });
+  });
+
+  it("real async memo: never-resolved → omitted; resolved → present; refetching → omitted via isPending; landed → present", async () => {
+    const tick = () => new Promise<void>((r) => setTimeout(r, 5));
+    let resolveFirst!: (v: number) => void;
+    let gate = new Promise<number>((r) => (resolveFirst = r));
+    const [ver, setVer] = createSignal(0);
+    const snapshots: Record<string, unknown>[] = [];
+    const dispose = createRoot((d) => {
+      const data = createMemo(() => {
+        ver();
+        return gate;
+      });
+      // the prop object shape the compiler produces: a getter per passed prop
+      const props = {
+        get rowData() {
+          return data();
+        },
+        get other() {
+          return "static";
+        },
+      };
+      createEffect(
+        () => snapshotGridProps(props, new Set()),
+        (snap) => {
+          snapshots.push(snap);
+        },
+      );
+      return d;
+    });
+    flush();
+    await tick();
+    // uninitialized: rowData absent, other props not stalled
+    expect(snapshots.at(-1)).toEqual({ other: "static" });
+
+    resolveFirst(1);
+    await tick();
+    flush();
+    await tick();
+    expect(snapshots.at(-1)).toEqual({ rowData: 1, other: "static" });
+
+    // refetch: dependency change re-asks; while pending the key is absent (SWR: no change is
+    // applied), and the landing re-runs the compute with the new value
+    gate = new Promise<number>((r) => setTimeout(() => r(2), 20));
+    setVer(1);
+    flush();
+    await tick();
+    const duringRefetch = snapshots.at(-1)!;
+    expect("rowData" in duringRefetch && duringRefetch.rowData === 2).toBe(false);
+    for (let i = 0; i < 8; i++) await tick();
+    flush();
+    await tick();
+    expect(snapshots.at(-1)).toEqual({ rowData: 2, other: "static" });
+    dispose();
   });
 
   it("extractGridPropertyChanges returns only reference-changed keys", () => {
