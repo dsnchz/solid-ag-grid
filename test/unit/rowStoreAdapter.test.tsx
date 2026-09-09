@@ -472,6 +472,24 @@ describe("rowStore dev validation (agGridSolid wiring)", () => {
     unmount();
   });
 
+  it("optimistic view: notes the per-key tracking fallback ONCE per grid (dev), and nothing else", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [store] = createStore<Row[]>(initialRows());
+    const [view] = createOptimisticStore<Row[]>(store);
+    const { unmount } = render(() => (
+      <AgGridSolid columnDefs={columnDefs} rowStore={view} getRowId={(params) => params.data.id} />
+    ));
+    await settle();
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(infoSpy.mock.calls[0]![0]).toMatch(/per-key field tracking is active/);
+    expect(infoSpy.mock.calls[0]![0]).toMatch(/solidjs\/solid#3323/);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
   it("stays silent when rowStore is configured correctly", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

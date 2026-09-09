@@ -1,5 +1,6 @@
 import type { GridApi } from "ag-grid-community";
 import {
+  $PROXY,
   $TRACK,
   createEffect,
   createRoot,
@@ -8,6 +9,7 @@ import {
   onCleanup,
   runWithOwner,
   snapshot,
+  storeHasOptimisticFamily,
   untrack,
 } from "solid-js";
 
@@ -40,17 +42,27 @@ import {
 //   return IS the payload, captured at invalidation time into `pendingUpdates`
 //   (last-write-wins per key); the microtask flush hands the map's values straight to
 //   applyTransactionAsync — no array walk.
-// - STRUCTURAL path, mapArray-grade (the same O(n)-pointer-walk profile as <For>): row
-//   handles are identity-stable across moves/splices/optimistic reverts (probe test:
-//   "row handles are identity-stable"), so the apply pointer-diffs the new handle array
-//   against the previous pass (positional `===` fast path + a WeakMap for moved handles)
-//   and runs `snapshot(row)` + getRowKey ONLY on genuinely new/changed handles. The one
-//   identity break — an optimistic settle-confirm swaps the overlay handle for the
-//   base-backed one — is detected by the same diff and handled by REBINDING that row's
-//   field projection (the old overlay handle's store nodes go dead at settle; a projection
-//   left on it would miss every later field write).
+// - STRUCTURAL path, mapArray-grade (the same O(n)-pointer-walk profile as <For>): the
+//   apply pointer-diffs the new handle array against the previous pass (positional `===`
+//   fast path + a WeakMap for handles that merely moved) and does heavy work ONLY on
+//   handles it has not seen: a key read for a re-handled existing row, `snapshot(row)` for
+//   a genuinely new row. Plain-store handles are identity-stable across moves/splices and
+//   field writes (pinned in test/unit/rowStoreAdapterDelta.test.tsx). Optimistic views are
+//   NOT (solid-js >= rc.1 store rewrite): a structural overlay op (push/splice) serves fresh
+//   proxies for EVERY row until revert/settle restores the originals, and a settle-confirm
+//   swaps the tentative row's handle for the base-backed one. Any handle change for a live
+//   key REBINDS that row's field projection — a projection left on a superseded handle
+//   would miss every later field write. Field-only optimistic writes churn nothing.
+// OPTIMISTIC-VIEW FALLBACK (solidjs/solid#3323, rc.1..rc.7): `deep(row)` over an optimistic
+// view never wakes on authoritative BASE writes (per-key tracked reads do; plain stores are
+// fine). Detected per store via storeHasOptimisticFamily (public since rc.4): optimistic
+// views take `trackedPlain(row)` — a per-key tracked walk that subscribes to every path of
+// the row through the proxy get trap and returns the same plain payload. It is NOT the
+// default because it materializes one signal per field instead of one witness per row
+// (measured rc.7, 100k rows x 20 fields: +762 MB vs +168 MB heap, 4x setup). Remove the
+// branch when #3323 lands; the rebind tests keep both paths honest.
 // The never-proxy assertions in test/unit/rowStoreAdapter.test.tsx and the flagship console
-// spy remain the detectors for any regression of the upstream guarantee.
+// spy remain the detectors for any regression of the upstream snapshot guarantee.
 
 export type RowStoreAdapterParams<TData> = {
   /** The user's array store proxy. The adapter only reads it — never writes. */
@@ -92,6 +104,40 @@ type RowEntry<TData> = {
   dispose: (() => void) | null;
 };
 
+// the consumer's bundler replaces this (Vite/Rollup/webpack lib convention); typed locally so
+// the d.ts build stays free of @types/node
+declare const process: { readonly env: { readonly NODE_ENV?: string } } | undefined;
+
+const isStoreProxy = (value: unknown): value is object =>
+  value !== null &&
+  typeof value === "object" &&
+  (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
+
+/**
+ * Per-key tracked plain copy (the optimistic-view fallback for `deep(row)`, see the module
+ * note): every property of every nested store proxy is read through the get trap, which
+ * subscribes the calling computation to that path, and `Object.keys` subscribes to the
+ * record's key set. Non-proxy values are leaves and are returned as-is — exactly what
+ * `snapshot()` does for raw-marked / non-wrappable values (Date, class instances).
+ */
+const trackedPlain = (value: unknown): unknown => {
+  if (!isStoreProxy(value)) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = trackedPlain(value[i]);
+    }
+    return out;
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    out[key] = trackedPlain((value as Record<string, unknown>)[key]);
+  }
+  return out;
+};
+
 export const createRowStoreAdapter = <TData>(
   params: RowStoreAdapterParams<TData>,
 ): RowStoreAdapter<TData> => {
@@ -122,6 +168,18 @@ export const createRowStoreAdapter = <TData>(
   // seed: the ONE whole-array snapshot in the module (every row is needed here anyway).
   // untrack: deliberately non-subscribing read (payload capture, not a dependency).
   const seedRows = untrack(() => snapshot(store)) as readonly TData[];
+
+  // see OPTIMISTIC-VIEW FALLBACK above — decided once per adapter; the store's family never
+  // changes over its lifetime
+  const perKeyTracking = storeHasOptimisticFamily(store);
+  if (perKeyTracking && typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
+    console.info(
+      "AG Grid: `rowStore` is an optimistic view — per-key field tracking is active " +
+        "(deep() over optimistic views misses base-store writes on Solid 2.0.0-rc.1+, " +
+        "solidjs/solid#3323). Expect higher memory per row than a plain store until the " +
+        "upstream fix ships.",
+    );
+  }
   for (const data of seedRows) {
     entries.set(getRowKey(data), { snap: data, handle: null, dispose: null });
   }
@@ -195,7 +253,7 @@ export const createRowStoreAdapter = <TData>(
         // { defer: true } skips the initial run: the compute still establishes tracking, but
         // the add transaction (or boot seed) already carried this exact data.
         createEffect(
-          () => deep(row),
+          () => (perKeyTracking ? trackedPlain(row) : deep(row)),
           (plain) => {
             pendingUpdates.set(key, plain as TData);
             scheduleUpdateFlush();
@@ -229,32 +287,32 @@ export const createRowStoreAdapter = <TData>(
         // O(1) key recovery: same handle at the same position → last pass's key; a known
         // handle at a new position (splice shifted it) → the WeakMap's key
         let key = row === (prevHandles[i] as unknown) ? prevKeys[i]! : handleKeys.get(row);
-        if (key === undefined || !entries.has(key)) {
-          // O(delta) heavy path: genuinely new handle, a handle swap on an existing key, or
-          // a previously-removed object re-added (known key, no entry)
+        if (key === undefined) {
+          // unseen handle: the key is read THROUGH the proxy (O(1), no copy) — the user's
+          // getRowId only derives from data fields, and a proxy serves them like data
+          key = untrack(() => getRowKey(row as TData));
+          handleKeys.set(row, key);
+        }
+        const entry = entries.get(key);
+        if (entry) {
+          if (entry.handle !== row) {
+            // handle change for a live key: seeded pre-mount (handle null — attach on first
+            // sight of the live proxy), an optimistic overlay serving fresh proxies, a revert
+            // restoring the originals, or a settle-confirm replacing the tentative proxy with
+            // the base-backed one. Rebind the field projection — a projection left on a
+            // superseded handle would miss every later field write. `snap` is kept: the
+            // remove payload only needs the id fields, which are stable. { defer: true }
+            // keeps the rebind emission-free (settle and revert stay silent).
+            entry.dispose?.();
+            entry.handle = row;
+            entry.dispose = createRowProjection(key, row);
+          }
+        } else {
+          // O(delta) heavy path: a genuinely new row, or a previously-removed object re-added
+          // (known key, no entry) — the add transaction needs the plain copy
           const data = untrack(() => snapshot(row)) as TData;
-          if (key === undefined) {
-            key = getRowKey(data);
-            handleKeys.set(row, key);
-          }
-          const entry = entries.get(key);
-          if (entry) {
-            entry.snap = data;
-            if (entry.handle !== row) {
-              // handle swap for a live key: seeded pre-mount (handle null — attach on first
-              // sight of the live proxy), or an optimistic settle-confirm replacing the
-              // overlay proxy with the base-backed one. Rebind the field projection — the
-              // old handle's store nodes go dead at settle, so a projection left on it
-              // would miss every later field write. { defer: true } keeps the rebind
-              // emission-free, preserving the settle-is-silent semantics.
-              entry.dispose?.();
-              entry.handle = row;
-              entry.dispose = createRowProjection(key, row);
-            }
-          } else {
-            adds.push({ data, index: i });
-            entries.set(key, { snap: data, handle: row, dispose: createRowProjection(key, row) });
-          }
+          adds.push({ data, index: i });
+          entries.set(key, { snap: data, handle: row, dispose: createRowProjection(key, row) });
         }
         keys[i] = key;
         nextKeys.add(key);

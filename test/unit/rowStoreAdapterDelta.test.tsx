@@ -1,9 +1,12 @@
 // Delta-capture coverage for the rowStore adapter (solid-js >= 2.0.0-beta.24 — the
 // snapshot()/deep() per-item forms are plain even on optimistic views since
 // solidjs/solid@a5fe9fb). Pins, in order:
-// 1. THE IDENTITY PROBE — row handles are identity-stable across moves/splices and
-//    optimistic overlay/revert; the ONE break is the settle-confirm handle swap. The
-//    structural pointer-diff design rests on this.
+// 1. THE IDENTITY PROBE — plain-store row handles are identity-stable across moves/splices
+//    and field writes (the structural pointer-diff's fast path). Optimistic views are NOT
+//    (rc.1+ store rewrite): structural overlay ops serve fresh proxies for every row until
+//    revert/settle, and a settle-confirm swaps the tentative row's handle — so the adapter's
+//    contract there is behavioral: no structural churn, and field writes project after every
+//    handle change (the rebind law, section 4).
 // 2. Never-proxy on per-item payloads: the async update payload is deep(row)'s return,
 //    captured at invalidation time on an optimistic view — must be plain.
 // 3. Structural delta: unchanged rows are NOT re-keyed/re-snapshotted (getRowKey spy).
@@ -105,18 +108,28 @@ describe("row-handle identity (the probe the structural pointer-diff rests on)",
     expect(untrack(() => store[0])).toBe(afterInsert[0]);
   });
 
-  it("optimistic view: handles are stable across overlay move and revert; settle-confirm SWAPS the handle", async () => {
+  it("optimistic view: overlay move and revert emit no structural churn; field writes project on the restored handles", async () => {
     const [base, setBase] = createStore<Row[]>(initialRows());
+    const calls: Call[] = [];
+    const fakeApi = recordingApi(calls);
     let view!: readonly Row[];
     let setView!: ReturnType<typeof createOptimisticStore<Row[]>>[1];
     const dispose = createRoot((d) => {
       [view, setView] = createOptimisticStore<Row[]>(base);
+      createRowStoreAdapter<Row>({
+        store: view,
+        getRowKey: (data) => data.id,
+        getApi: () => fakeApi,
+        processWhenReady: (fn) => fn(),
+      });
       return d;
     });
     flush();
     const before = untrack(() => view.map((row) => row));
 
-    // overlay move: untouched rows and the moved row all keep identity
+    // overlay move: a pure reorder. On rc.7 every row is served through a fresh proxy while
+    // the overlay is active — the adapter re-keys through the proxies (no snapshots) and
+    // must emit NOTHING: same keys, same membership (transactions cannot express moves).
     let rejectServer!: (reason: Error) => void;
     const serverCall = new Promise<never>((_, reject) => {
       rejectServer = reject;
@@ -130,45 +143,83 @@ describe("row-handle identity (the probe the structural pointer-diff rests on)",
     });
     const pending = move().catch(() => "failed");
     flush();
-    const during = untrack(() => view.map((row) => row));
-    expect(during[2]).toBe(before[0]);
-    expect(during[0]).toBe(before[1]);
-    expect(during[1]).toBe(before[2]);
+    await microtasks();
+    expect(calls).toHaveLength(0);
 
-    // revert restores the original handles exactly
+    // revert restores the original handles exactly (both Solid lines agree on this)
     rejectServer(new Error("boom"));
     expect(await pending).toBe("failed");
     flush();
+    await microtasks();
+    expect(calls).toHaveLength(0);
     const reverted = untrack(() => view.map((row) => row));
     expect(reverted[0]).toBe(before[0]);
     expect(reverted[1]).toBe(before[1]);
     expect(reverted[2]).toBe(before[2]);
 
-    // settle-confirm: the overlay handle is REPLACED by the base-backed one — the one
-    // identity instability; the adapter handles it by rebinding the row's projection
-    let resolveServer!: () => void;
-    const serverOk = new Promise<void>((resolve) => {
-      resolveServer = () => resolve();
+    // the projections were rebound across the churn: a base write after the revert projects
+    // (a projection left on the overlay-era proxy would silently miss it)
+    setBase((draft) => {
+      draft[0]!.qty = 10;
     });
-    const addRow = action(function* (row: Row) {
-      setView((draft) => {
-        draft.push({ ...row });
+    flush();
+    await microtasks();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.kind).toBe("async");
+    expect(calls[0]!.txn.update).toEqual([{ id: "a", name: "alpha", qty: 10 }]);
+    dispose();
+  });
+
+  it("optimistic view: nested base writes project through the per-key walk (solid#3323 fallback)", async () => {
+    type NestedRow = { readonly id: string; meta: { note: string; tags: string[] } };
+    const [base, setBase] = createStore<NestedRow[]>([
+      { id: "a", meta: { note: "one", tags: ["x"] } },
+      { id: "b", meta: { note: "two", tags: [] } },
+    ]);
+    const calls: {
+      readonly kind: "sync" | "async";
+      readonly txn: RowDataTransaction<NestedRow>;
+    }[] = [];
+    const fakeApi = {
+      applyTransaction: (txn: RowDataTransaction<NestedRow>) => {
+        calls.push({ kind: "sync", txn });
+        return null;
+      },
+      applyTransactionAsync: (txn: RowDataTransaction<NestedRow>) => {
+        calls.push({ kind: "async", txn });
+      },
+    } as unknown as GridApi<NestedRow>;
+    const dispose = createRoot((d) => {
+      const [view] = createOptimisticStore<NestedRow[]>(base);
+      createRowStoreAdapter<NestedRow>({
+        store: view,
+        getRowKey: (data) => data.id,
+        getApi: () => fakeApi,
+        processWhenReady: (fn) => fn(),
       });
-      yield serverOk;
-      setBase((draft) => {
-        draft.push({ ...row });
-      });
+      return d;
     });
-    const confirming = addRow({ id: "n1", name: "new", qty: 9 });
     flush();
-    const overlayHandle = untrack(() => view[3]);
-    resolveServer();
-    await confirming;
+
+    // a nested leaf write and a nested array push, authoritative (base) side, no action
+    setBase((draft) => {
+      draft[0]!.meta.note = "uno";
+      draft[1]!.meta.tags.push("y");
+    });
     flush();
-    const settledHandle = untrack(() => view[3]);
-    expect(settledHandle).not.toBe(overlayHandle);
-    // ...while the untouched rows keep identity across the settle
-    expect(untrack(() => view[0])).toBe(before[0]);
+    await microtasks();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.kind).toBe("async");
+    expect(calls[0]!.txn.update).toEqual([
+      { id: "a", meta: { note: "uno", tags: ["x"] } },
+      { id: "b", meta: { note: "two", tags: ["y"] } },
+    ]);
+    // payloads are plain at every depth
+    for (const row of calls[0]!.txn.update as NestedRow[]) {
+      expect(isProxy(row)).toBe(false);
+      expect(isProxy(row.meta)).toBe(false);
+      expect(isProxy(row.meta.tags)).toBe(false);
+    }
     dispose();
   });
 });

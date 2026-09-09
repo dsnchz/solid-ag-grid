@@ -220,6 +220,16 @@ Measured (informational browser benchmark, 10,000 rows, real Chromium — `test/
 
 > Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.0-rc.7` peer floor. Verified against each Solid release we bump to.
 
+### Optimistic views on Solid 2.0.0-rc.1 – rc.7: per-key tracking
+
+The rc.1 store rewrite introduced a regression we reported upstream as [solidjs/solid#3323](https://github.com/solidjs/solid/issues/3323): `deep()` over a `createOptimisticStore` view never wakes on writes to the **base** store, even though per-key reads on the same row do. Left alone, a `rowStore` bound to an optimistic view would project optimistic writes but silently miss the server-confirmed truth.
+
+Until the fix ships, the adapter detects an optimistic view at creation (`storeHasOptimisticFamily`) and switches that store's per-row projection from the deep witness to a **per-key tracked walk**: every path of the row is read through the proxy, so nested fields and nested arrays project correctly. Plain stores are unaffected and keep the cheap path.
+
+The trade is memory. The walk materializes one signal per field instead of one witness per row — measured on rc.7 at 100k rows × 20 fields: about **+760 MB** of heap versus **+170 MB**, and roughly 4× the setup time. A one-time `console.info` names the trade in development builds. If your optimistic grid is large, keep the view narrow (project only the fields the grid shows) until #3323 lands; the branch is removed the moment it does.
+
+One more rc.7 behavior worth knowing: while a structural optimistic write (push/splice) is in flight, the view serves fresh row proxies for **every** row, restoring the originals at settle or revert. The adapter re-keys through the proxies without snapshotting and rebinds each projection, so correctness holds, but a structural optimistic action costs O(rows) rather than O(delta) on this Solid line. Field-only optimistic writes are unaffected.
+
 ## See also
 
 - [Reactivity guide](./reactivity.md) — the two-doorway model and footgun catalog; `rowStore` is the opt-in third way in.
