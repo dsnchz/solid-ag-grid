@@ -67,6 +67,11 @@ export default defineConfig(
     },
   },
   {
+    // release tooling (Node scripts run by pnpm scripts)
+    files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: { ...globals.node, ...globals.es2022 } },
+  },
+  {
     files: ["src/**/*.ts", "src/**/*.tsx"],
     rules: {
       // The port mirrors AG Grid's interfaces, which use `any` pervasively
