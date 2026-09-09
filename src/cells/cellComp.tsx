@@ -304,46 +304,6 @@ const CellComp = (props: CellCompProps) => {
     compBean = context.destroyBean(compBean);
   });
 
-  // if RenderDetails changed, need to call refresh. This is not our preferred way (the
-  // preferred way is to let the new params propagate to the Solid cell renderer) however we do
-  // this for backwards compatibility, as having refresh used to be supported.
-  // Effect classification: signal-keyed lifecycle bridge to the non-Solid renderer instance
-  // (calls its imperative refresh(); the renderKey bump remounts it when refresh declines).
-  let lastRenderDetails: RenderDetails | undefined;
-  createEffect(
-    () => renderDetails(),
-    (newDetails) => {
-      const oldDetails = lastRenderDetails;
-      lastRenderDetails = newDetails;
-
-      // Skip unless we have a real renderDetails change. A wrapper-only change (same inner
-      // compDetails ref, new wrapper object) would otherwise drive an infinite update loop:
-      // refresh() → renderKey bump → renderer remount → cellCtrl re-emits compDetails → repeat.
-      const oldCompDetails = oldDetails?.compDetails;
-      const newCompDetails = newDetails?.compDetails;
-      if (oldCompDetails == null || newCompDetails == null || oldCompDetails === newCompDetails) {
-        return;
-      }
-
-      // if different Cell Renderer, then do nothing, as renderer will be recreated
-      if (oldCompDetails.componentClass != newCompDetails.componentClass) {
-        return;
-      }
-
-      // if no refresh method, do nothing (params flow reactively into the mounted comp)
-      if (cellRendererRef?.refresh == null) {
-        return;
-      }
-
-      const result = cellRendererRef.refresh(newCompDetails.params);
-      if (result != true) {
-        // increasing the render key forces a remount (undocumented refresh()-returns-false
-        // contract kept for GroupCellRenderer parity — see the React source)
-        setRenderKey((prev) => prev + 1);
-      }
-    },
-  );
-
   // remount the framework renderer ONLY when the component class or renderKey changes; param
   // updates flow reactively through the spread (Solid analog of React's key + prop propagation)
   const frameworkRendererInfo = createMemo<FrameworkRendererInfo | undefined>(
@@ -383,14 +343,55 @@ const CellComp = (props: CellCompProps) => {
     <>
       <Show when={rawValueMode()}>{rawValue()}</Show>
       <Show when={frameworkRendererInfo()} keyed>
-        {(info) => (
-          <Loading fallback={<SkeletonCellRenderer cellCtrl={cellCtrl} />}>
-            <info.Comp
-              {...rendererParams()}
-              ref={(instance: any) => (cellRendererRef = instance)}
-            />
-          </Loading>
-        )}
+        {(info) => {
+          // if RenderDetails changed, need to call refresh. This is not our preferred way (the
+          // preferred way is to let the new params propagate to the Solid cell renderer)
+          // however we do this for backwards compatibility, as having refresh used to be
+          // supported. Effect classification: signal-keyed lifecycle bridge to the mounted
+          // renderer instance (calls its imperative refresh(); the renderKey bump remounts it
+          // when refresh declines) — SCOPED to this renderer's branch (per-cell diet 4/5):
+          // only a mounted framework renderer can carry a refresh handle, so plain-value and
+          // JS-renderer cells never create it, and a remount (new keyed branch) starts it
+          // fresh. Solid ordering is preserved: the prop spread applies before this effect
+          // runs, so refresh(params) sees props that already carry the new value (pinned in
+          // test/unit/cellRendererRefresh.test.tsx). `prev` replaces React's previous-value
+          // ref; the first run has none and is a no-op, like before.
+          createEffect(
+            () => renderDetails()?.compDetails,
+            (compDetails, prev) => {
+              // Skip unless we have a real compDetails change. A wrapper-only change (same
+              // inner compDetails ref, new wrapper object) would otherwise drive an infinite
+              // update loop: refresh() → renderKey bump → renderer remount → cellCtrl
+              // re-emits compDetails → repeat.
+              if (prev == null || compDetails == null || compDetails === prev) {
+                return;
+              }
+              // if different Cell Renderer, then do nothing, as renderer will be recreated
+              if (prev.componentClass != compDetails.componentClass) {
+                return;
+              }
+              // if no refresh method, do nothing (params flow reactively into the mounted comp)
+              if (cellRendererRef?.refresh == null) {
+                return;
+              }
+              const result = cellRendererRef.refresh(compDetails.params);
+              if (result != true) {
+                // increasing the render key forces a remount (undocumented
+                // refresh()-returns-false contract kept for GroupCellRenderer parity — see the
+                // React source)
+                setRenderKey((prev) => prev + 1);
+              }
+            },
+          );
+          return (
+            <Loading fallback={<SkeletonCellRenderer cellCtrl={cellCtrl} />}>
+              <info.Comp
+                {...rendererParams()}
+                ref={(instance: any) => (cellRendererRef = instance)}
+              />
+            </Loading>
+          );
+        }}
       </Show>
       {jsRenderer.gui()}
     </>
