@@ -97,8 +97,9 @@ const measure = async (rows: number, cols: number) => {
 //   2026-09-09 imperative attribute/style writes: cell 25 / 9, row 32 / 5
 //     (row-index, row-id, row-business-key, top, transform, user row/cell styles: setter →
 //      DOM, like vanilla; static initial attributes)
+//   2026-09-09 lazy JS-renderer machinery + JS element on the framework fallback: cell 23 / 9
 const BUDGET = {
-  cell: { computations: 25, signals: 9 },
+  cell: { computations: 23, signals: 9 },
   row: { computations: 32, signals: 5 },
 };
 

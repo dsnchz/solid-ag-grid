@@ -15,8 +15,10 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  getOwner,
   Loading,
   onCleanup,
+  runWithOwner,
   Show,
   untrack,
 } from "solid-js";
@@ -24,6 +26,7 @@ import {
 import { CellEditorComponentProxy } from "../customComp/cellEditorComponentProxy";
 import { warnReactiveCustomComponents } from "../customComp/util";
 import { jsxEditValue } from "./cellEditorComp";
+import type { JsCellRenderer } from "./createJsCellRenderer";
 import { createJsCellRenderer } from "./createJsCellRenderer";
 import type { EditDetails, RenderDetails } from "./interfaces";
 import { SkeletonCellRenderer } from "./skeletonCellComp";
@@ -165,12 +168,38 @@ const CellComp = (props: CellCompProps) => {
   };
 
   // JS (non-framework) renderer instance lifecycle; its gui inserts as derived JSX in the
-  // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed
-  const jsRenderer = createJsCellRenderer({
-    context,
-    renderDetails,
-    suppress: suppressJsRenderer,
+  // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed.
+  // LAZY (per-cell diet): the lifecycle effect + gui signal are created under this component's
+  // owner the first time a non-framework compDetails arrives (setRenderDetails is the only
+  // writer), so a plain-value or framework-renderer cell never creates them. The insert reads
+  // `jsGui`, a plain signal that exists from mount and is bridged from the renderer's gui.
+  // isCellRenderer() cannot gate this at mount: refreshShouldDestroy does not cover renderer
+  // changes, so a column may gain a renderer in place.
+  const owner = getOwner();
+  const [jsGui, setJsGui] = createSignal<HTMLElement | undefined>(undefined, {
+    ownedWrite: true,
   });
+  let jsRenderer: JsCellRenderer | undefined;
+  const ensureJsRenderer = () => {
+    if (jsRenderer || context.isDestroyed()) {
+      return;
+    }
+    runWithOwner(owner, () => {
+      const renderer = createJsCellRenderer({
+        context,
+        renderDetails,
+        suppress: suppressJsRenderer,
+      });
+      // bridge (cleanup-free: an effect callback may only return a function or undefined)
+      createEffect(
+        () => renderer.gui(),
+        (gui) => {
+          setJsGui(gui);
+        },
+      );
+      jsRenderer = renderer;
+    });
+  };
 
   // ctrl.setComp needs the root cell element plus (when present) the spanned wrapper and the
   // ag-cell-wrapper, whose refs are applied parent-before-children — guarded setup fires once
@@ -211,10 +240,13 @@ const CellComp = (props: CellCompProps) => {
       },
 
       getCellEditor: () => cellEditorRef ?? null,
-      getCellRenderer: () => cellRendererRef ?? jsRenderer.instance() ?? null,
+      getCellRenderer: () => cellRendererRef ?? jsRenderer?.instance() ?? null,
       getParentOfValue: () => eCellValue ?? eCellWrapper ?? eGui ?? null,
 
       setRenderDetails: (compDetails, value, force) => {
+        if (compDetails != null && !compDetails.componentFromFramework) {
+          ensureJsRenderer();
+        }
         const setDetails = () => {
           // identity-preserving update: keep the previous object when nothing changed so
           // downstream memos/effects don't re-fire
@@ -239,6 +271,11 @@ const CellComp = (props: CellCompProps) => {
             // of deferRender cells with zero console errors and correct final content; the
             // swap is one microtask batch, so there is no interleaved frame. Revisit only if
             // profiling real apps shows scroll jank from heavy renderers.
+            // the loading comp is a JS comp (agSkeletonCellRenderer / colDef.loadingCellRenderer)
+            // even when the real renderer is a framework one — it needs the JS machinery too
+            if (!loadingComp.componentFromFramework) {
+              ensureJsRenderer();
+            }
             setRenderDetails({ value: undefined, compDetails: loadingComp, force: false });
             onReady.then(() => setDetails());
             return;
@@ -321,8 +358,10 @@ const CellComp = (props: CellCompProps) => {
   const rendererParams = () => renderDetails()?.compDetails?.params;
 
   // raw value: rendered when there is no cell renderer at all (compDetails == null). Inserted
-  // as the framework Show's fallback — a reactive text insert that updates in place on value
-  // ticks, instead of a second <Show> per cell (per-cell diet 5/5)
+  // as the framework Show's fallback together with the JS renderer's element (`?? jsGui()`):
+  // the two are mutually exclusive by construction (raw ⇔ compDetails == null, JS element ⇔ a
+  // non-framework compDetails), so one reactive insert serves both — no second <Show>, no
+  // second insert per cell (per-cell diet 5/5)
   const rawValue = () => {
     const details = renderDetails();
     if (details == null || details.compDetails != null) {
@@ -344,7 +383,7 @@ const CellComp = (props: CellCompProps) => {
   // browser test "async framework cell renderer" in cellsComplete.browser.test.tsx.
   const valueOrCellCompJsx = () => (
     <>
-      <Show when={frameworkRendererInfo()} keyed fallback={rawValue()}>
+      <Show when={frameworkRendererInfo()} keyed fallback={rawValue() ?? jsGui()}>
         {(info) => {
           // if RenderDetails changed, need to call refresh. This is not our preferred way (the
           // preferred way is to let the new params propagate to the Solid cell renderer)
@@ -395,7 +434,6 @@ const CellComp = (props: CellCompProps) => {
           );
         }}
       </Show>
-      {jsRenderer.gui()}
     </>
   );
 
