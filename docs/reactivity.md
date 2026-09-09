@@ -194,6 +194,18 @@ Internally, the component reads every grid-option prop inside one diffing comput
 2. refetches are stale-while-revalidate (key absent from the change snapshot → no change applied),
 3. a pending prop never blocks other props from updating.
 
+## The reactive graph budget (design note)
+
+"What can be derived, should be derived" is enforced by a test, not only by review. `test/unit/reactiveGraphBudget.test.tsx` walks Solid's dev owner tree under mounted grids and derives the **marginal** reactive nodes one cell and one row add to the graph, by differencing grid sizes. The counts are deterministic, so the budget is pinned exactly and any change that adds an effect, memo or `Show` branch to the per-cell or per-row mount fails there first — before it shows up as scroll jank on wide grids, where the same mount runs on every row swap.
+
+How the cell got cheap (2026-09-09, 41 → 26 computations per cell, 40 → 34 per row): the port had copied four `useLayoutEffect`s as always-on `createEffect`s. In Solid they are not needed as effects at all:
+
+- **editing CSS classes** are written at the only sites that change their inputs — `init()`, the `setEditDetails` proxy method and the wrapper `<Show>` branch — because every writer of that state is ours (§5.1: proxy setters are writes, not effects);
+- the **JS-editor lifecycle**, the **tool-widget lifecycle** and the **renderer refresh bridge** live in the `<Show>` branch that owns their state (the editor session, the cell wrapper, the mounted framework renderer), so a cell that is never edited, has no tools or no framework renderer never creates them and branch disposal is their cleanup;
+- a row creates its six full-width effects only when it **is** full-width — a per-ctrl constant, so gating creation on it is a static branch, not a reactivity hazard.
+
+The rule for new code: before adding a `createEffect` to a hot component, ask which branch owns the state it reacts to, and whether the state has a single writer you control. If it does, write there; if a branch owns it, create the effect inside that branch.
+
 ## See also
 
 - [Row store guide](./row-store.md) — declarative row data via `rowStore`, optimistic recipes, canonical affordances, and when NOT to use it
