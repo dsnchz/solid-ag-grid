@@ -28,6 +28,10 @@ export function getInstance<
   promise.then((comp: TCustomComponent | undefined) => callback(comp));
 }
 
+/**
+ * Logs the grid's warning that a custom Solid component needs `reactiveCustomComponents`
+ * enabled (AG Grid warning #231). Exported for parity with ag-grid-react.
+ */
 export function warnReactiveCustomComponents(): void {
   _warn(231);
 }

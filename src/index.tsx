@@ -13,8 +13,11 @@
 export type { AgGridProviderProps } from "./agGridProvider";
 export { AgGridProvider } from "./agGridProvider";
 export type { AgGridSolidProps, AgGridSolidRef } from "./agGridSolid";
-export { AgGridSolid, AgGridSolid as default } from "./agGridSolid";
+export { AgGridSolid } from "./agGridSolid";
+/** Default export: the {@link AgGridSolid} component. */
+export { AgGridSolid as default } from "./agGridSolid";
 // ag-grid-react parity: `CustomContext as CustomComponentContext` is public API
+export type { CustomContextParams } from "./customComp/customContext";
 export { CustomContext as CustomComponentContext } from "./customComp/customContext";
 export {
   useGridCellEditor,

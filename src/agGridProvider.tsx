@@ -4,6 +4,7 @@ import { _areEqual } from "ag-stack";
 import type { Accessor } from "solid-js";
 import { createContext, createMemo, useContext } from "solid-js";
 
+/** Props for {@link AgGridProvider}: modules and license shared by every grid rendered beneath it. */
 export type AgGridProviderProps = {
   /**
    * The AG Grid Modules to be used by all grid instances within this provider.

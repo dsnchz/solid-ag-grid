@@ -147,7 +147,9 @@ export type CustomDragAndDropImageProps<TData = any, TContext = any> = IDragAndD
   readonly shake: boolean;
 };
 
+/** Props provided to custom inner header components (rendered inside the grid's default header). */
 export type CustomInnerHeaderProps<TData = any, TContext = any> = IHeaderParams<TData, TContext>;
+/** Props provided to custom inner header group components (rendered inside the grid's default group header). */
 export type CustomInnerHeaderGroupProps<TData = any, TContext = any> = IHeaderGroupParams<
   TData,
   TContext

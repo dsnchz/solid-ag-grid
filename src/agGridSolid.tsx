@@ -26,11 +26,26 @@ import { createRowStoreAdapter } from "./core/rowStoreAdapter";
 import { SolidFrameworkOverrides } from "./core/solidFrameworkOverrides";
 import GridComp from "./gridComp";
 
+/**
+ * The imperative handle passed to the `ref` callback of {@link AgGridSolid} once the grid has
+ * been created. `api` is the grid's `GridApi`; it is the same object for the life of the grid.
+ */
 export type AgGridSolidRef<TData = any> = {
+  /** The grid's API, available once the grid has booted (after the component's `onSettled`). */
   api: GridApi<TData>;
 };
 
+/**
+ * Props of {@link AgGridSolid}: every AG Grid `GridOptions` key as a reactive prop, plus the
+ * Solid-specific additions (`modules`, `containerStyle`, `rowStore`, `ref`). Each grid-option
+ * prop is tracked individually: change one and only that option is pushed to the grid.
+ */
 export interface AgGridSolidProps<TData = any> extends GridOptions<TData> {
+  /**
+   * Grid options as a single object, merged beneath the individual props at creation. Kept
+   * for parity with ag-grid-react; prefer the individual reactive props for anything that
+   * changes over time.
+   */
   gridOptions?: GridOptions<TData>;
   /**
    * Used to register AG Grid Modules directly with this instance of the grid.
@@ -59,6 +74,7 @@ export interface AgGridSolidProps<TData = any> extends GridOptions<TData> {
    */
   rowStore?: readonly TData[];
 
+  /** Receives the {@link AgGridSolidRef} (the grid API) once the grid has been created. */
   ref?: (ref: AgGridSolidRef<TData>) => void;
 }
 
@@ -82,6 +98,16 @@ const isStoreProxy = (value: unknown): boolean =>
   typeof value === "object" &&
   (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
 
+/**
+ * AG Grid with 100% SolidJS rendering: every header, row and cell is a Solid component, on the
+ * same architecture as `ag-grid-react`. Pass AG Grid options as props; the grid boots once the
+ * component settles and reacts to prop changes per option thereafter.
+ *
+ * @example
+ * ```tsx
+ * <AgGridSolid rowData={rows()} columnDefs={columns} ref={(r) => (api = r.api)} />
+ * ```
+ */
 export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
