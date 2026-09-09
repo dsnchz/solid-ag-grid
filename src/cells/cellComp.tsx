@@ -104,6 +104,24 @@ const CellComp = (props: CellCompProps) => {
 
   const cssManager = new CssClassManager(() => eGui);
 
+  // EDITING CLASSES ARE EVENT-DRIVEN WRITES (§5.1: compProxy setters are writes, not effects;
+  // per-cell diet 3/5). The four classes compose with the ones the ctrl pushes through
+  // toggleCss, so they cannot be derived JSX `class`. Vanilla writes them in refreshWrapper /
+  // refreshEditStyles at construction and on each edit transition; here the same three
+  // sites exist and are the ONLY places editDetails / the wrapper change: init() (mount,
+  // after setComp — CssClassManager records state even before eGui exists, so never
+  // earlier), the setEditDetails proxy method (edit start/stop), and the cell-wrapper <Show>
+  // branch (mount/cleanup toggles ag-cell-value). No subscription is needed for a state
+  // whose every writer is ours.
+  const applyEditClasses = (details: EditDetails | undefined) => {
+    if (!eGui) {
+      return;
+    }
+    cssManager.toggleCss("ag-cell-inline-editing", !!details && !details.popup);
+    cssManager.toggleCss("ag-cell-popup-editing", !!details && !!details.popup);
+    cssManager.toggleCss("ag-cell-not-inline-editing", !details || !!details.popup);
+  };
+
   const showTools = createMemo(
     () =>
       renderDetails() != null &&
@@ -129,6 +147,11 @@ const CellComp = (props: CellCompProps) => {
         // over other ordering gaps but not this one. Solid components run once, so we evaluate
         // inside the deferred turn, after the editor component (and its setMethods) has run —
         // which also matches the vanilla comp's post-creation evaluation order.
+        // the edit session may already be over by this turn (stopEditing in the same tick,
+        // grid destroyed) — the core's tooltip/attached paths then dereference torn-down beans
+        if (cellEditorRef !== cellEditor || !cellCtrl.isAlive() || context.isDestroyed()) {
+          return;
+        }
         const editingCancelledByUserComp = cellEditor.isCancelBeforeStart?.();
         if (editingCancelledByUserComp) {
           cellCtrl.stopEditing(true);
@@ -236,7 +259,9 @@ const CellComp = (props: CellCompProps) => {
             }
           }
           // start editing
-          setEditDetails({ compDetails, popup, popupPosition, compProxy: editorProxy });
+          const details = { compDetails, popup, popupPosition, compProxy: editorProxy };
+          setEditDetails(details);
+          applyEditClasses(details);
           if (!popup) {
             setRenderDetails(undefined);
           }
@@ -252,6 +277,7 @@ const CellComp = (props: CellCompProps) => {
           // source notes the same regression)
           cellEditorRef = undefined;
           setEditDetails(undefined);
+          applyEditClasses(undefined);
         }
       },
       refreshEditStyles: (editing, isPopup) => {
@@ -266,6 +292,10 @@ const CellComp = (props: CellCompProps) => {
     };
 
     cellCtrl.setComp(compProxy, eGui, eWrapper, eCellWrapper, printLayout, editingCell, compBean);
+    // mount-time classes, after setComp like vanilla's constructor order; the wrapper branch
+    // (if any) already mounted before this ref fired and toggled ag-cell-value itself
+    cssManager.toggleCss("ag-cell-value", !untrack(showCellWrapper));
+    applyEditClasses(untrack(editDetails));
   };
 
   // no unsetComp — like React, destroying the compBean detaches everything the ctrl attached
@@ -313,22 +343,6 @@ const CellComp = (props: CellCompProps) => {
         // contract kept for GroupCellRenderer parity — see the React source)
         setRenderKey((prev) => prev + 1);
       }
-    },
-  );
-
-  // editing-style classes live on the imperative CssClassManager (they must compose with the
-  // classes the ctrl pushes through toggleCss, so they cannot be derived JSX `class`).
-  // Effect classification: signal-driven imperative DOM bridge (CssClassManager instance).
-  createEffect(
-    () => ({ wrapper: showCellWrapper(), details: editDetails() }),
-    ({ wrapper, details }) => {
-      if (!eGui) {
-        return;
-      }
-      cssManager.toggleCss("ag-cell-value", !wrapper);
-      cssManager.toggleCss("ag-cell-inline-editing", !!details && !details.popup);
-      cssManager.toggleCss("ag-cell-popup-editing", !!details && !!details.popup);
-      cssManager.toggleCss("ag-cell-not-inline-editing", !details || !!details.popup);
     },
   );
 
@@ -549,8 +563,14 @@ const CellComp = (props: CellCompProps) => {
   const showCellJsx = () => (
     <Show when={showCellWrapper()} fallback={showCellOrEditorJsx()}>
       {(_wrapper) => {
-        // same unmount-clearing contract as eCellValue above
-        onCleanup(() => (eCellWrapper = undefined));
+        // same unmount-clearing contract as eCellValue above; the wrapper's presence IS the
+        // ag-cell-value class state (vanilla refreshWrapper: toggleCss("ag-cell-value",
+        // !usingWrapper)), so the branch writes it on mount and restores it on cleanup
+        cssManager.toggleCss("ag-cell-value", false);
+        onCleanup(() => {
+          eCellWrapper = undefined;
+          cssManager.toggleCss("ag-cell-value", true);
+        });
         return (
           <div
             class="ag-cell-wrapper"
