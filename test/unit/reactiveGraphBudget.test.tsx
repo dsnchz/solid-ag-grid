@@ -85,13 +85,18 @@ const measure = async (rows: number, cols: number) => {
   return size;
 };
 
-// BASELINE (2026-09-09, solid-js 2.0.0-rc.7, BEFORE the per-cell diet):
-//   per cell: 41 computations / 11 signals   per row: 40 computations / 11 signals
-// The budget is the CEILING the implementation must stay under. Tighten it when the mount gets
-// cheaper; never raise it without a design note in ARCHITECTURE.md.
+// HISTORY (solid-js 2.0.0-rc.7):
+//   2026-09-09 before the per-cell diet: cell 41 computations / 11 signals, row 40 / 11
+//   2026-09-09 after  the per-cell diet: cell 26 / 10, row 34 / 11
+//     (editor effect, tool-widget effect and refresh bridge scoped to their branches; editing
+//      classes event-driven; inner wrapper Show + raw-value Show + showTools memo + per-cell
+//      context lookup removed; row full-width effects gated on the per-ctrl constants)
+// The budget is the CEILING the implementation must stay under — the counts are deterministic,
+// so it is pinned exactly. Tighten it when the mount gets cheaper; never raise it without a
+// design note in ARCHITECTURE.md.
 const BUDGET = {
-  cell: { computations: 41, signals: 11 },
-  row: { computations: 40, signals: 11 },
+  cell: { computations: 26, signals: 10 },
+  row: { computations: 34, signals: 11 },
 };
 
 describe("reactive graph budget (dev owner-tree walk)", () => {

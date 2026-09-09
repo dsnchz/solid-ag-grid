@@ -279,114 +279,125 @@ const RowComp = (props: RowCompProps) => {
     compBean = context.destroyBean(compBean);
   });
 
-  // full-width JS (non-framework) renderer mounts into the anchor div (framework renderers
-  // render inline below; showJsComp no-ops for them). Effect classification (§5.1 bridge
-  // category 2): signal-keyed lifecycle of a non-Solid instance (React: useLayoutEffect).
-  createEffect(
-    () => fullWidthCompDetails(),
-    (details) =>
-      showJsComp(details, context, eFullWidthAnchor ?? eGui!, (instance) => {
-        fullWidthComp = instance;
-      }),
-  );
+  // FULL-WIDTH EFFECTS ARE CREATED ONLY FOR FULL-WIDTH ROWS (per-row diet). isFullWidth and
+  // showEmbeddedFullWidth are fixed for the life of the ctrl (a change rebuilds the RowCtrl,
+  // which remounts this comp via <For>), so gating computation CREATION on them is a static
+  // branch, not a reactivity hazard — a normal cells row never creates the six effects below
+  // (React runs all of them on every row and bails inside). Pinned by
+  // test/unit/reactiveGraphBudget.test.tsx (per-row budget) and the groupDetailFullWidth
+  // suites (full-width, embedded, detail autoHeight behavior unchanged).
+  if (isFullWidth && !showEmbeddedFullWidth) {
+    // full-width JS (non-framework) renderer mounts into the anchor div (framework renderers
+    // render inline below; showJsComp no-ops for them). Effect classification (§5.1 bridge
+    // category 2): signal-keyed lifecycle of a non-Solid instance (React: useLayoutEffect).
+    createEffect(
+      () => fullWidthCompDetails(),
+      (details) =>
+        showJsComp(details, context, eFullWidthAnchor ?? eGui!, (instance) => {
+          fullWidthComp = instance;
+        }),
+    );
 
-  // embedded full-width JS renderers, one per lane (same classification as above)
-  createEffect(
-    () => embeddedFullWidthCompDetails()?.left,
-    (details) => {
-      if (!ePinnedLeftCells) {
-        return;
-      }
-      return showJsComp(details, context, ePinnedLeftCells, (instance) => {
-        fullWidthEmbeddedLeftComp = instance;
-      });
-    },
-  );
-  createEffect(
-    () => embeddedFullWidthCompDetails()?.center,
-    (details) => {
-      if (!eScrollingCells) {
-        return;
-      }
-      return showJsComp(details, context, eScrollingCells, (instance) => {
-        fullWidthEmbeddedCenterComp = instance;
-      });
-    },
-  );
-  createEffect(
-    () => embeddedFullWidthCompDetails()?.right,
-    (details) => {
-      if (!ePinnedRightCells) {
-        return;
-      }
-      return showJsComp(details, context, ePinnedRightCells, (instance) => {
-        fullWidthEmbeddedRightComp = instance;
-      });
-    },
-  );
+    // puts autoHeight onto full-width detail rows. this needs trickery, as we need the
+    // HTMLElement of the provided Detail Cell Renderer, which may mount asynchronously (JS comps
+    // resolve through AgPromise), so we poll — limited to 10 attempts — for the anchor's first
+    // element child after fullWidthCompDetails is set. Effect classification: reactive → core
+    // push (hands the detail element to rowCtrl.setupDetailRowAutoHeight).
+    createEffect(
+      () => ({ details: fullWidthCompDetails(), attempt: autoHeightSetupAttempt() }),
+      ({ details, attempt }) => {
+        if (autoHeightSetup || !details || attempt > 10) {
+          return;
+        }
 
-  // embedded lane content tracking: the core hides/sizes lanes based on whether each one has
-  // real content (a framework comp may render nothing into a lane). Effect classification:
-  // signal-driven lifecycle of an external DOM observer (MutationObserver).
-  createEffect(
-    () => embeddedFullWidthCompDetails(),
-    () => {
-      if (!showEmbeddedFullWidth) {
-        return;
-      }
-      const updateLaneVisibility = () => {
-        // firstElementChild, never firstChild — Solid insertions can be bracketed by marker
-        // text nodes (portal identity verdict, §7.8)
-        const next = {
-          left: !!ePinnedLeftCells?.firstElementChild,
-          center: !!eScrollingCells?.firstElementChild,
-          right: !!ePinnedRightCells?.firstElementChild,
+        const eChild = eFullWidthAnchor?.firstElementChild as HTMLElement | null | undefined;
+        if (eChild) {
+          rowCtrl.setupDetailRowAutoHeight(eChild);
+          autoHeightSetup = true;
+        } else {
+          // retry on a task boundary: unlike React (state update → new render pass), an
+          // immediate signal bump would re-run inside the same flush — before an async JS comp
+          // could possibly have mounted — burning all attempts at once
+          setTimeout(() => setAutoHeightSetupAttempt(attempt + 1), 0);
+        }
+      },
+    );
+  }
+
+  if (showEmbeddedFullWidth) {
+    // embedded full-width JS renderers, one per lane (same classification as above)
+    createEffect(
+      () => embeddedFullWidthCompDetails()?.left,
+      (details) => {
+        if (!ePinnedLeftCells) {
+          return;
+        }
+        return showJsComp(details, context, ePinnedLeftCells, (instance) => {
+          fullWidthEmbeddedLeftComp = instance;
+        });
+      },
+    );
+    createEffect(
+      () => embeddedFullWidthCompDetails()?.center,
+      (details) => {
+        if (!eScrollingCells) {
+          return;
+        }
+        return showJsComp(details, context, eScrollingCells, (instance) => {
+          fullWidthEmbeddedCenterComp = instance;
+        });
+      },
+    );
+    createEffect(
+      () => embeddedFullWidthCompDetails()?.right,
+      (details) => {
+        if (!ePinnedRightCells) {
+          return;
+        }
+        return showJsComp(details, context, ePinnedRightCells, (instance) => {
+          fullWidthEmbeddedRightComp = instance;
+        });
+      },
+    );
+
+    // embedded lane content tracking: the core hides/sizes lanes based on whether each one has
+    // real content (a framework comp may render nothing into a lane). Effect classification:
+    // signal-driven lifecycle of an external DOM observer (MutationObserver).
+    createEffect(
+      () => embeddedFullWidthCompDetails(),
+      () => {
+        if (!showEmbeddedFullWidth) {
+          return;
+        }
+        const updateLaneVisibility = () => {
+          // firstElementChild, never firstChild — Solid insertions can be bracketed by marker
+          // text nodes (portal identity verdict, §7.8)
+          const next = {
+            left: !!ePinnedLeftCells?.firstElementChild,
+            center: !!eScrollingCells?.firstElementChild,
+            right: !!ePinnedRightCells?.firstElementChild,
+          };
+          const prev = rowCtrl.embeddedSectionHasContent;
+          rowCtrl.embeddedSectionHasContent = next;
+          if (prev.left !== next.left || prev.center !== next.center || prev.right !== next.right) {
+            // React forces a re-render here so the row re-reads the pinned lane widths; our
+            // widths memo keys on the same version bump refreshPinnedSections uses
+            setPinnedSectionsVersion((v) => v + 1);
+          }
         };
-        const prev = rowCtrl.embeddedSectionHasContent;
-        rowCtrl.embeddedSectionHasContent = next;
-        if (prev.left !== next.left || prev.center !== next.center || prev.right !== next.right) {
-          // React forces a re-render here so the row re-reads the pinned lane widths; our
-          // widths memo keys on the same version bump refreshPinnedSections uses
-          setPinnedSectionsVersion((v) => v + 1);
+
+        updateLaneVisibility();
+        const observer = new MutationObserver(updateLaneVisibility);
+        for (const el of [ePinnedLeftCells, eScrollingCells, ePinnedRightCells]) {
+          if (el) {
+            observer.observe(el, { childList: true });
+          }
         }
-      };
 
-      updateLaneVisibility();
-      const observer = new MutationObserver(updateLaneVisibility);
-      for (const el of [ePinnedLeftCells, eScrollingCells, ePinnedRightCells]) {
-        if (el) {
-          observer.observe(el, { childList: true });
-        }
-      }
-
-      return () => observer.disconnect();
-    },
-  );
-
-  // puts autoHeight onto full-width detail rows. this needs trickery, as we need the
-  // HTMLElement of the provided Detail Cell Renderer, which may mount asynchronously (JS comps
-  // resolve through AgPromise), so we poll — limited to 10 attempts — for the anchor's first
-  // element child after fullWidthCompDetails is set. Effect classification: reactive → core
-  // push (hands the detail element to rowCtrl.setupDetailRowAutoHeight).
-  createEffect(
-    () => ({ details: fullWidthCompDetails(), attempt: autoHeightSetupAttempt() }),
-    ({ details, attempt }) => {
-      if (autoHeightSetup || !details || attempt > 10) {
-        return;
-      }
-
-      const eChild = eFullWidthAnchor?.firstElementChild as HTMLElement | null | undefined;
-      if (eChild) {
-        rowCtrl.setupDetailRowAutoHeight(eChild);
-        autoHeightSetup = true;
-      } else {
-        // retry on a task boundary: unlike React (state update → new render pass), an
-        // immediate signal bump would re-run inside the same flush — before an async JS comp
-        // could possibly have mounted — burning all attempts at once
-        setTimeout(() => setAutoHeightSetupAttempt(attempt + 1), 0);
-      }
-    },
-  );
+        return () => observer.disconnect();
+      },
+    );
+  }
 
   const rowStyles = createMemo(() => {
     const res: JSX.CSSProperties = { top: top(), transform: transform() };
