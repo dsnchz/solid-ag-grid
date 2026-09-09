@@ -431,6 +431,7 @@ const RowComp = (props: RowCompProps) => {
       {(cellCtrl) => (
         <CellComp
           cellCtrl={cellCtrl}
+          context={context}
           editingCell={editSvc?.isEditing(cellCtrl, { withOpenEditor: true }) ?? false}
           printLayout={rowCtrl.printLayout}
         />

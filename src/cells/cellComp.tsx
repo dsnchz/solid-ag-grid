@@ -3,6 +3,7 @@ import type {
   CellCtrl,
   CellStyle,
   Component as AgComponent,
+  Context,
   ICellComp,
   ICellEditor,
   ICellEditorComp,
@@ -18,10 +19,8 @@ import {
   onCleanup,
   Show,
   untrack,
-  useContext,
 } from "solid-js";
 
-import { BeansContext } from "../core/beansContext";
 import { CellEditorComponentProxy } from "../customComp/cellEditorComponentProxy";
 import { warnReactiveCustomComponents } from "../customComp/util";
 import { jsxEditValue } from "./cellEditorComp";
@@ -33,6 +32,8 @@ type CellCompProps = {
   cellCtrl: CellCtrl;
   printLayout: boolean;
   editingCell: boolean;
+  /** the grid Context, handed down by RowComp — saves a per-cell owner-chain context lookup */
+  context: Context;
 };
 
 /** Identity key for the mounted framework cell renderer: remount only on class/renderKey change. */
@@ -49,10 +50,9 @@ type ToolWidgetElements = {
 };
 
 const CellComp = (props: CellCompProps) => {
-  const { context } = useContext(BeansContext);
-
   // raw <For> items / creation-time values — capture once in the body (setComp verdict in
   // gridComp.tsx); untrack silences the top-level-read dev warning
+  const context = untrack(() => props.context);
   const cellCtrl = untrack(() => props.cellCtrl);
   const printLayout = untrack(() => props.printLayout);
   const editingCell = untrack(() => props.editingCell);
@@ -122,13 +122,15 @@ const CellComp = (props: CellCompProps) => {
     cssManager.toggleCss("ag-cell-not-inline-editing", !details || !!details.popup);
   };
 
-  const showTools = createMemo(
+  // the ag-cell-wrapper renders when tool widgets are present (and the value is visible —
+  // inline editing hides tools) or the ctrl forces it; one memo, one equality cut
+  const showCellWrapper = createMemo(
     () =>
-      renderDetails() != null &&
-      (includeSelection() || includeDndSource() || includeRowDrag()) &&
-      (editDetails() == null || !!editDetails()!.popup),
+      forceWrapper ||
+      (renderDetails() != null &&
+        (includeSelection() || includeDndSource() || includeRowDrag()) &&
+        (editDetails() == null || !!editDetails()!.popup)),
   );
-  const showCellWrapper = createMemo(() => forceWrapper || showTools());
 
   // the JS renderer is torn down while an inline (non-popup) editor is active
   const suppressJsRenderer = () => {
@@ -319,13 +321,15 @@ const CellComp = (props: CellCompProps) => {
 
   const rendererParams = () => renderDetails()?.compDetails?.params;
 
-  const rawValueMode = createMemo(() => {
-    const details = renderDetails();
-    return details != null && details.compDetails == null;
-  });
-
+  // raw value: rendered when there is no cell renderer at all (compDetails == null). Inserted
+  // as the framework Show's fallback — a reactive text insert that updates in place on value
+  // ticks, instead of a second <Show> per cell (per-cell diet 5/5)
   const rawValue = () => {
-    const value = renderDetails()?.value;
+    const details = renderDetails();
+    if (details == null || details.compDetails != null) {
+      return undefined;
+    }
+    const value = details.value;
     // if we didn't do this, objects would render incorrectly. we depend on objects for things
     // like the aggregation functions avg and count, which return objects and depend on
     // toString() getting called.
@@ -341,8 +345,7 @@ const CellComp = (props: CellCompProps) => {
   // browser test "async framework cell renderer" in cellsComplete.browser.test.tsx.
   const valueOrCellCompJsx = () => (
     <>
-      <Show when={rawValueMode()}>{rawValue()}</Show>
-      <Show when={frameworkRendererInfo()} keyed>
+      <Show when={frameworkRendererInfo()} keyed fallback={rawValue()}>
         {(info) => {
           // if RenderDetails changed, need to call refresh. This is not our preferred way (the
           // preferred way is to let the new params propagate to the Solid cell renderer)
@@ -405,26 +408,32 @@ const CellComp = (props: CellCompProps) => {
     return details == null || !!details.popup;
   };
 
-  const showCellValueJsx = () => (
-    <Show when={cellValueVisible() && renderDetails() != null}>
-      <Show when={showCellWrapper()} fallback={valueOrCellCompJsx()}>
-        {(_wrapper) => {
-          // getParentOfValue must stop returning the span once it unmounts (React nulls the
-          // ref on unmount; Solid refs don't re-run) — Show function children give a scope
-          // to register the branch cleanup in
-          onCleanup(() => (eCellValue = undefined));
-          return (
-            <span
-              role="presentation"
-              id={`cell-${instanceId}`}
-              class={cellValueClass}
-              ref={(el) => (eCellValue = el)}
-            >
-              {valueOrCellCompJsx()}
-            </span>
-          );
-        }}
-      </Show>
+  const valueVisible = () => cellValueVisible() && renderDetails() != null;
+
+  // no wrapper: the value content sits directly in the cell (the cell carries ag-cell-value)
+  const bareValueJsx = () => <Show when={valueVisible()}>{valueOrCellCompJsx()}</Show>;
+
+  // wrapper: the value content sits in the ag-cell-value span, absent while inline editing
+  // (vanilla's takeCellValueOut). getParentOfValue must stop returning the span once it
+  // unmounts (React nulls the ref on unmount; Solid refs don't re-run) — Show function
+  // children give a scope to register the branch cleanup in. The outer wrapper decision is
+  // made ONCE by showCellJsx; the former inner wrapper <Show> here was provably redundant
+  // inside either branch (per-cell diet 5/5).
+  const spanValueJsx = () => (
+    <Show when={valueVisible()}>
+      {(_visible) => {
+        onCleanup(() => (eCellValue = undefined));
+        return (
+          <span
+            role="presentation"
+            id={`cell-${instanceId}`}
+            class={cellValueClass}
+            ref={(el) => (eCellValue = el)}
+          >
+            {valueOrCellCompJsx()}
+          </span>
+        );
+      }}
     </Show>
   );
 
@@ -496,15 +505,16 @@ const CellComp = (props: CellCompProps) => {
     </Show>
   );
 
-  const showCellOrEditorJsx = () => (
-    <>
-      {showCellValueJsx()}
-      {showEditValueJsx()}
-    </>
-  );
-
   const showCellJsx = () => (
-    <Show when={showCellWrapper()} fallback={showCellOrEditorJsx()}>
+    <Show
+      when={showCellWrapper()}
+      fallback={
+        <>
+          {bareValueJsx()}
+          {showEditValueJsx()}
+        </>
+      }
+    >
       {(_wrapper) => {
         // same unmount-clearing contract as eCellValue above; the wrapper's presence IS the
         // ag-cell-value class state (vanilla refreshWrapper: toggleCss("ag-cell-value",
@@ -597,7 +607,8 @@ const CellComp = (props: CellCompProps) => {
             {toolWidgets()?.rowDrag}
             {toolWidgets()?.dnd}
             {toolWidgets()?.selection}
-            {showCellOrEditorJsx()}
+            {spanValueJsx()}
+            {showEditValueJsx()}
           </div>
         );
       }}
