@@ -10,6 +10,7 @@ const PERF_TESTS = [
   "test/browser/perfProfile.browser.test.tsx",
   "test/browser/perfTimeline.browser.test.tsx",
   "test/browser/perfSwapProfile.browser.test.tsx",
+  "test/browser/perfSwapAlloc.browser.test.tsx",
 ];
 
 // factory, not a shared object: Vitest names each project's browser instance in place, and a
