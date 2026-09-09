@@ -316,58 +316,6 @@ const CellComp = (props: CellCompProps) => {
     },
   );
 
-  // JS (non-framework) editor: instance creation via newAgStackInstance, inline gui attach +
-  // afterGuiAttached, destruction when the edit session ends (editDetails changes/clears).
-  // Effect classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
-  // instance (the JS cell editor bean), keyed on editDetails.
-  createEffect(
-    () => editDetails(),
-    (details) => {
-      const doingJsEditor = details && !details.compDetails.componentFromFramework;
-      if (!doingJsEditor || context.isDestroyed()) {
-        return;
-      }
-
-      const compDetails = details.compDetails;
-      const isPopup = details.popup === true;
-
-      const cellEditorPromise = compDetails.newAgStackInstance();
-
-      cellEditorPromise.then((cellEditor: ICellEditorComp) => {
-        if (!cellEditor) {
-          return;
-        }
-
-        const compGui = cellEditor.getGui();
-
-        setCellEditorRef(cellEditor);
-
-        if (!isPopup) {
-          const parentEl = forceWrapper ? eCellWrapper : eGui;
-          parentEl?.appendChild(compGui);
-
-          cellEditor.afterGuiAttached?.();
-        }
-
-        setJsEditorComp(cellEditor);
-      });
-
-      return () => {
-        // AgPromise.then resolves synchronously on a settled promise, so this body runs
-        // inline here — including at disposal, which is why jsEditorComp has ownedWrite
-        cellEditorPromise.then((cellEditor: ICellEditorComp) => {
-          const compGui = cellEditor.getGui();
-          cellCtrl.disableEditorTooltipFeature();
-          context.destroyBean(cellEditor);
-          setCellEditorRef(undefined);
-          setJsEditorComp(undefined);
-
-          compGui?.remove();
-        });
-      };
-    },
-  );
-
   // editing-style classes live on the imperative CssClassManager (they must compose with the
   // classes the ctrl pushes through toggleCss, so they cannot be derived JSX `class`).
   // Effect classification: signal-driven imperative DOM bridge (CssClassManager instance).
@@ -527,9 +475,67 @@ const CellComp = (props: CellCompProps) => {
   // the JS-editor effect above (jsxEditValue returns null for them)
   const showEditValueJsx = () => (
     <Show when={editDetails()} keyed>
-      {(details) =>
-        jsxEditValue(details, setCellEditorRef, eGui!, cellCtrl, jsEditorComp, editorParamsVersion)
-      }
+      {(details) => {
+        // JS (non-framework) editor: instance creation via newAgStackInstance, inline gui
+        // attach + afterGuiAttached, destruction when the edit session ends. Effect
+        // classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
+        // instance — SCOPED to the edit session: the keyed <Show> branch is the owner, so the
+        // effect exists only while this cell is being edited and its cleanup runs when the
+        // branch is disposed (editDetails changes or clears). A cell that is never edited
+        // never creates it (per-cell diet, PERF: reactiveGraphBudget.test.tsx).
+        if (!details.compDetails.componentFromFramework && !context.isDestroyed()) {
+          createEffect(
+            () => undefined,
+            () => {
+              const compDetails = details.compDetails;
+              const isPopup = details.popup === true;
+
+              const cellEditorPromise = compDetails.newAgStackInstance();
+
+              cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+                if (!cellEditor) {
+                  return;
+                }
+
+                const compGui = cellEditor.getGui();
+
+                setCellEditorRef(cellEditor);
+
+                if (!isPopup) {
+                  const parentEl = forceWrapper ? eCellWrapper : eGui;
+                  parentEl?.appendChild(compGui);
+
+                  cellEditor.afterGuiAttached?.();
+                }
+
+                setJsEditorComp(cellEditor);
+              });
+
+              return () => {
+                // AgPromise.then resolves synchronously on a settled promise, so this body runs
+                // inline here — including at disposal, which is why jsEditorComp has ownedWrite
+                cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+                  const compGui = cellEditor.getGui();
+                  cellCtrl.disableEditorTooltipFeature();
+                  context.destroyBean(cellEditor);
+                  setCellEditorRef(undefined);
+                  setJsEditorComp(undefined);
+
+                  compGui?.remove();
+                });
+              };
+            },
+          );
+        }
+        return jsxEditValue(
+          details,
+          setCellEditorRef,
+          eGui!,
+          cellCtrl,
+          jsEditorComp,
+          editorParamsVersion,
+        );
+      }}
     </Show>
   );
 
