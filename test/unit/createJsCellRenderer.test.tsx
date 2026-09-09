@@ -78,7 +78,12 @@ const setup = () => {
 
   let renderer!: ReturnType<typeof createJsCellRenderer>;
   const dispose = createRoot((d) => {
-    renderer = createJsCellRenderer({ context, renderDetails: details, suppress });
+    renderer = createJsCellRenderer({
+      context,
+      compDetails: () => details()?.compDetails ?? (details() ? null : undefined),
+      force: () => details()?.force,
+      suppress,
+    });
     return d;
   });
   flush();

@@ -1,12 +1,13 @@
-import type { Context, ICellRendererComp } from "ag-grid-community";
+import type { Context, ICellRendererComp, UserCompDetails } from "ag-grid-community";
 import type { Accessor } from "solid-js";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 
-import type { RenderDetails } from "./interfaces";
-
 export type JsCellRendererOptions = {
   context: Context;
-  renderDetails: Accessor<RenderDetails | undefined>;
+  /** the cell's compDetails: undefined = no details yet, null = details without a renderer */
+  compDetails: Accessor<UserCompDetails | null | undefined>;
+  /** the core's forceNewCellRendererInstance flag for the current details */
+  force: Accessor<boolean | undefined>;
   /** true while an inline (non-popup) editor is active — the renderer is torn down (T3.8) */
   suppress?: Accessor<boolean>;
 };
@@ -31,7 +32,7 @@ export type JsCellRenderer = {
  * The effect owns only the instance lifecycle (create / refresh-else-recreate / destroy).
  */
 export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRenderer => {
-  const { context, renderDetails, suppress } = options;
+  const { context, compDetails: compDetailsAccessor, force, suppress } = options;
 
   let comp: ICellRendererComp | undefined;
   // bumped on every create/destroy so a stale async newAgStackInstance resolution is discarded
@@ -56,13 +57,16 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
 
   // create or refresh the JS cell renderer.
   // Effect classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
-  // instance — creation/refresh/destruction of the JS renderer bean, keyed on renderDetails
-  // and the inline-edit suppression flag.
+  // instance — creation/refresh/destruction of the JS renderer bean, keyed on the cell's
+  // compDetails / force signals and the inline-edit suppression flag.
   createEffect(
-    () => ({ details: renderDetails(), suppressed: suppress?.() ?? false }),
-    ({ details, suppressed }) => {
-      const jsCompDetails =
-        details?.compDetails != null && !details.compDetails.componentFromFramework;
+    () => ({
+      compDetails: compDetailsAccessor(),
+      forced: force() == true,
+      suppressed: suppress?.() ?? false,
+    }),
+    ({ compDetails, forced, suppressed }) => {
+      const jsCompDetails = compDetails != null && !compDetails.componentFromFramework;
       const showComp = jsCompDetails && !suppressed;
 
       // if not showing the comp, destroy any existing one and return
@@ -71,11 +75,9 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
         return;
       }
 
-      const compDetails = details!.compDetails!;
-
       if (comp) {
         // attempt refresh if a refresh method exists and a new instance was not forced
-        const attemptRefresh = comp.refresh != null && details!.force == false;
+        const attemptRefresh = comp.refresh != null && !forced;
         const refreshResult = attemptRefresh ? comp.refresh!(compDetails.params) : false;
         const refreshWorked = refreshResult === true || refreshResult === undefined;
 

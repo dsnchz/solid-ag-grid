@@ -98,8 +98,10 @@ const measure = async (rows: number, cols: number) => {
 //     (row-index, row-id, row-business-key, top, transform, user row/cell styles: setter →
 //      DOM, like vanilla; static initial attributes)
 //   2026-09-09 lazy JS-renderer machinery + JS element on the framework fallback: cell 23 / 9
+//   2026-09-09 renderDetails split into compDetails/value/force: cell 23 / 11 (+2 signals by
+//     design — three part-signals replace one object so a value tick touches only the text)
 const BUDGET = {
-  cell: { computations: 23, signals: 9 },
+  cell: { computations: 23, signals: 11 },
   row: { computations: 32, signals: 5 },
 };
 

@@ -8,6 +8,7 @@ import type {
   ICellEditor,
   ICellEditorComp,
   RowDragComp,
+  UserCompDetails,
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
 import { _addStylesToElement, _removeFromParent, CssClassManager } from "ag-stack";
@@ -28,7 +29,7 @@ import { warnReactiveCustomComponents } from "../customComp/util";
 import { jsxEditValue } from "./cellEditorComp";
 import type { JsCellRenderer } from "./createJsCellRenderer";
 import { createJsCellRenderer } from "./createJsCellRenderer";
-import type { EditDetails, RenderDetails } from "./interfaces";
+import type { EditDetails } from "./interfaces";
 import { SkeletonCellRenderer } from "./skeletonCellComp";
 
 type CellCompProps = {
@@ -65,13 +66,24 @@ const CellComp = (props: CellCompProps) => {
 
   let compBean: _EmptyBean | undefined;
 
+  // RENDER DETAILS ARE THREE SIGNALS, NOT ONE OBJECT (per-cell diet, fan-out): the core pushes
+  // (compDetails, value, force) together, but readers care about different parts — the wrapper
+  // memo and value visibility about "are there details at all", the renderer branch about
+  // compDetails identity, the raw-value text about value. One object signal fanned every
+  // value tick out to all of them; per-part signals with default `===` equality let a plain
+  // value tick touch only the text insert. compDetails: undefined = no details yet (a cell
+  // with a renderer, before the first push), null = details without a renderer (raw value).
   // Only provide an initial state when not using a Cell Renderer so that we do not display a
   // raw value before the cell renderer is created.
-  const [renderDetails, setRenderDetails] = createSignal<RenderDetails | undefined>(
-    cellCtrl.isCellRenderer()
-      ? undefined
-      : { compDetails: undefined, value: cellCtrl.getValueToDisplay(), force: false },
+  const hasRenderer = cellCtrl.isCellRenderer();
+  const [compDetails, setCompDetails] = createSignal<UserCompDetails | null | undefined>(
+    hasRenderer ? undefined : null,
   );
+  const [value, setValue] = createSignal<unknown>(
+    hasRenderer ? undefined : cellCtrl.getValueToDisplay(),
+  );
+  const [force, setForce] = createSignal<boolean | undefined>(false);
+  const hasDetails = () => compDetails() !== undefined;
   const [editDetails, setEditDetails] = createSignal<EditDetails | undefined>();
   const [renderKey, setRenderKey] = createSignal<number>(1);
   // bumped by CellEditorComponentProxy's refreshProps — drives the reactive editor-props
@@ -128,7 +140,7 @@ const CellComp = (props: CellCompProps) => {
   const showCellWrapper = createMemo(
     () =>
       forceWrapper ||
-      (renderDetails() != null &&
+      (hasDetails() &&
         (includeSelection() || includeDndSource() || includeRowDrag()) &&
         (editDetails() == null || !!editDetails()!.popup)),
   );
@@ -187,7 +199,8 @@ const CellComp = (props: CellCompProps) => {
     runWithOwner(owner, () => {
       const renderer = createJsCellRenderer({
         context,
-        renderDetails,
+        compDetails,
+        force,
         suppress: suppressJsRenderer,
       });
       // bridge (cleanup-free: an effect callback may only return a function or undefined)
@@ -248,18 +261,10 @@ const CellComp = (props: CellCompProps) => {
           ensureJsRenderer();
         }
         const setDetails = () => {
-          // identity-preserving update: keep the previous object when nothing changed so
-          // downstream memos/effects don't re-fire
-          setRenderDetails((prev) => {
-            if (
-              prev?.compDetails !== compDetails ||
-              prev?.value !== value ||
-              prev?.force !== force
-            ) {
-              return { value, compDetails, force };
-            }
-            return prev;
-          });
+          // three writes, one flush; each signal's `===` equality skips the unchanged parts
+          setCompDetails(compDetails ?? null);
+          setValue(() => value);
+          setForce(force);
         };
         if (compDetails?.params?.deferRender && !cellCtrl.rowNode.group) {
           const { loadingComp, onReady } = cellCtrl.getDeferLoadingCellRenderer();
@@ -276,7 +281,9 @@ const CellComp = (props: CellCompProps) => {
             if (!loadingComp.componentFromFramework) {
               ensureJsRenderer();
             }
-            setRenderDetails({ value: undefined, compDetails: loadingComp, force: false });
+            setCompDetails(loadingComp);
+            setValue(undefined);
+            setForce(false);
             onReady.then(() => setDetails());
             return;
           }
@@ -301,7 +308,9 @@ const CellComp = (props: CellCompProps) => {
           setEditDetails(details);
           applyEditClasses(details);
           if (!popup) {
-            setRenderDetails(undefined);
+            // inline editing replaces the value: "no details" until the ctrl re-pushes
+            setCompDetails(undefined);
+            setValue(undefined);
           }
         } else {
           // if leaving editor & editor is focused, move focus to the cell
@@ -346,16 +355,16 @@ const CellComp = (props: CellCompProps) => {
   // updates flow reactively through the spread (Solid analog of React's key + prop propagation)
   const frameworkRendererInfo = createMemo<FrameworkRendererInfo | undefined>(
     () => {
-      const compDetails = renderDetails()?.compDetails;
-      if (!compDetails?.componentFromFramework) {
+      const details = compDetails();
+      if (!details?.componentFromFramework) {
         return undefined;
       }
-      return { Comp: compDetails.componentClass, key: renderKey() };
+      return { Comp: details.componentClass, key: renderKey() };
     },
     { equals: (a, b) => a?.Comp === b?.Comp && a?.key === b?.key },
   );
 
-  const rendererParams = () => renderDetails()?.compDetails?.params;
+  const rendererParams = () => compDetails()?.params;
 
   // raw value: rendered when there is no cell renderer at all (compDetails == null). Inserted
   // as the framework Show's fallback together with the JS renderer's element (`?? jsGui()`):
@@ -363,15 +372,15 @@ const CellComp = (props: CellCompProps) => {
   // non-framework compDetails), so one reactive insert serves both — no second <Show>, no
   // second insert per cell (per-cell diet 5/5)
   const rawValue = () => {
-    const details = renderDetails();
-    if (details == null || details.compDetails != null) {
+    // null = details without a renderer; undefined = no details yet
+    if (compDetails() !== null) {
       return undefined;
     }
-    const value = details.value;
+    const raw = value() as { toString?: () => string } | null | undefined;
     // if we didn't do this, objects would render incorrectly. we depend on objects for things
     // like the aggregation functions avg and count, which return objects and depend on
     // toString() getting called.
-    return value?.toString?.() ?? value;
+    return raw?.toString?.() ?? raw;
   };
 
   // ASYNC-RENDERER VERDICT (ARCHITECTURE.md Open question 4, resolved T3.5): <Loading> around
@@ -398,7 +407,7 @@ const CellComp = (props: CellCompProps) => {
           // test/unit/cellRendererRefresh.test.tsx). `prev` replaces React's previous-value
           // ref; the first run has none and is a no-op, like before.
           createEffect(
-            () => renderDetails()?.compDetails,
+            () => compDetails(),
             (compDetails, prev) => {
               // Skip unless we have a real compDetails change. A wrapper-only change (same
               // inner compDetails ref, new wrapper object) would otherwise drive an infinite
@@ -445,7 +454,7 @@ const CellComp = (props: CellCompProps) => {
     return details == null || !!details.popup;
   };
 
-  const valueVisible = () => cellValueVisible() && renderDetails() != null;
+  const valueVisible = () => cellValueVisible() && hasDetails();
 
   // no wrapper: the value content sits directly in the cell (the cell carries ag-cell-value)
   const bareValueJsx = () => <Show when={valueVisible()}>{valueOrCellCompJsx()}</Show>;
@@ -624,7 +633,7 @@ const CellComp = (props: CellCompProps) => {
         // (React: in the refresh layout effect, for every cell; here only a drag cell pays)
         if (untrack(includeRowDrag)) {
           createEffect(
-            () => renderDetails()?.compDetails,
+            () => compDetails(),
             (compDetails, prev) => {
               if (prev != null && compDetails != null && compDetails !== prev) {
                 rowDragComp?.refreshVisibility();

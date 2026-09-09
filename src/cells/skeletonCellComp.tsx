@@ -3,7 +3,6 @@ import { Show, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
 import { createJsCellRenderer } from "./createJsCellRenderer";
-import type { RenderDetails } from "./interfaces";
 
 type SkeletonCellRendererProps = {
   cellCtrl: CellCtrl;
@@ -24,13 +23,14 @@ export const SkeletonCellRenderer = (props: SkeletonCellRendererProps) => {
   // per-mount constants: the loading comp cannot change for the life of the fallback
   // (React computes it once via useMemo([cellCtrl]))
   const { loadingComp } = cellCtrl.getDeferLoadingCellRenderer();
-  const renderDetails: RenderDetails | undefined = loadingComp
-    ? { value: undefined, compDetails: loadingComp, force: false }
-    : undefined;
 
   // JS loading comps run through the shared js-renderer lifecycle (a no-op for framework or
   // missing details); the gui element inserts as derived JSX below (§5.1)
-  const jsRenderer = createJsCellRenderer({ context, renderDetails: () => renderDetails });
+  const jsRenderer = createJsCellRenderer({
+    context,
+    compDetails: () => loadingComp ?? undefined,
+    force: () => false,
+  });
 
   const frameworkLoadingComp = loadingComp?.componentFromFramework ? loadingComp : undefined;
 
