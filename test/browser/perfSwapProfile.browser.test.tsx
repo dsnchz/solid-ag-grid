@@ -2,8 +2,8 @@
 // down) from MOUNT (new rows/cells created) by function-name classification of CDP self time,
 // Solid vs vanilla. Same synchronous scroll drive as perfCompare (scroll event dispatched under
 // suppressAnimationFrame; target row asserted inside the window).
-import { cdp } from "@vitest/browser/context";
 import { render } from "@solidjs/testing-library";
+import { cdp } from "@vitest/browser/context";
 import type { GridApi, GridOptions } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import { flush } from "solid-js";
