@@ -213,7 +213,7 @@ The grid boots from the initial value (`[]` → empty grid) and the resolved lis
 The adapter does per-row work, not per-array work:
 
 - **Field updates are O(1) per changed row.** Each row gets its own projection; the changed row's plain payload is captured at invalidation time and batched — one `applyTransactionAsync` call per microtask, no array walk.
-- **Structural changes are mapArray-grade** (the same profile as `<For>`): an O(n) pointer-identity walk over row handles, with the heavy work — snapshotting, key derivation, projection lifecycle — running only for the O(delta) rows that actually changed.
+- **Structural changes are mapArray-grade** (the same profile as `<For>`): one subscription (the array's `$TRACK` node, which bumps on any index or length change and never on a field write), then an O(n) pointer-identity walk over row handles, with the heavy work — snapshotting, key derivation, projection lifecycle — running only for the O(delta) rows that actually changed.
 - **Boot is one whole-array snapshot** — every row is needed once anyway.
 
 Measured (informational browser benchmark, 10,000 rows, real Chromium — `test/browser/rowStorePerf.browser.test.tsx`): a single-row **add** paints in **~15 ms** store-write→painted-row; a single-row **field update** paints in **~58 ms** store-write→painted-cell — a figure that _includes_ the grid's own `applyTransactionAsync` batching window (~50 ms by default), i.e. it is dominated by the grid's deliberate batching, not adapter CPU. The same benchmark asserts the updates are surgical: every other rendered row keeps its exact DOM elements.

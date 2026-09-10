@@ -16,7 +16,9 @@
 import type { GridApi, RowDataTransaction } from "ag-grid-community";
 import {
   $PROXY,
+  $TRACK,
   action,
+  createEffect,
   createOptimisticStore,
   createRoot,
   // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
@@ -409,6 +411,148 @@ describe("the rebind law (optimistic settle-confirm handle swap)", () => {
     expect(calls).toHaveLength(2);
     expect(calls[1]!.kind).toBe("async");
     expect(calls[1]!.txn.update).toEqual([{ id: "n1", name: "new", qty: 100 }]);
+    dispose();
+  });
+});
+
+// The store contract the structural compute rests on (rc.1+ store rewrite; "R15" in
+// packages/signals/src/store/next/store.ts, notifyWrites): an ARRAY's key-set node — what a
+// `$TRACK` read subscribes to — bumps on ANY index or length change (arrayStructureChanged:
+// length, then per-index identity), never on a field write into a row. The adapter's
+// structural effect therefore tracks `$TRACK` alone: the earlier `.map((row) => row)` walk
+// materialized and re-subscribed one index node per row per pass (100k nodes for a 100k
+// store) for nothing the key-set node did not already say. Each operation below is one
+// assertion of that contract; a change in the store's rule surfaces here, not as a missed
+// transaction.
+describe("the $TRACK contract (what the structural compute subscribes to)", () => {
+  const trackOnly = <T,>(store: readonly T[]) => {
+    let runs = 0;
+    const dispose = createRoot((d) => {
+      createEffect(
+        () => {
+          void (store as unknown as { readonly [key: symbol]: unknown })[$TRACK];
+          runs++;
+        },
+        () => undefined,
+      );
+      return d;
+    });
+    flush();
+    expect(runs).toBe(1);
+    const fires = (op: () => void): number => {
+      const before = runs;
+      op();
+      flush();
+      return runs - before;
+    };
+    return { fires, dispose };
+  };
+
+  it("plain store: fires once per structural op — push/unshift/splice/remove/reorder/index set/truncate", () => {
+    const [store, setStore] = createStore<Row[]>(initialRows());
+    const { fires, dispose } = trackOnly(store);
+    expect(fires(() => setStore((d) => void d.push({ id: "d", name: "delta", qty: 4 })))).toBe(1);
+    expect(fires(() => setStore((d) => void d.unshift({ id: "z", name: "zeta", qty: 0 })))).toBe(1);
+    expect(
+      fires(() => setStore((d) => void d.splice(2, 0, { id: "m", name: "mid", qty: 9 }))),
+    ).toBe(1);
+    expect(fires(() => setStore((d) => void d.splice(1, 1)))).toBe(1);
+    expect(
+      fires(() =>
+        setStore((d) => {
+          const [head] = d.splice(0, 1);
+          d.push(head!);
+        }),
+      ),
+    ).toBe(1);
+    // index replacement keeps the length — the per-index identity walk must still see it
+    expect(fires(() => setStore((d) => void (d[0] = { id: "r", name: "replaced", qty: 1 })))).toBe(
+      1,
+    );
+    expect(fires(() => setStore((d) => void (d.length = 2)))).toBe(1);
+    dispose();
+  });
+
+  it("plain store: a field write, a nested field write, and a same-value index set do NOT fire", () => {
+    const [store, setStore] = createStore<(Row & { meta?: { tag: string } })[]>(initialRows());
+    const { fires, dispose } = trackOnly(store);
+    expect(fires(() => setStore((d) => void (d[0]!.qty = 100)))).toBe(0);
+    expect(fires(() => setStore((d) => void (d[1]!.meta = { tag: "t" })))).toBe(0);
+    expect(fires(() => setStore((d) => void (d[1]!.meta!.tag = "u")))).toBe(0);
+    // writing the SAME row back to its index is structurally a no-op
+    expect(fires(() => setStore((d) => void (d[2] = d[2]!)))).toBe(0);
+    dispose();
+  });
+
+  it("optimistic view: base structural writes read through the chain; an overlay op fires on apply and on revert; field writes never", async () => {
+    const [base, setBase] = createStore<Row[]>(initialRows());
+    let view!: readonly Row[];
+    let setView!: ReturnType<typeof createOptimisticStore<Row[]>>[1];
+    let runs = 0;
+    const dispose = createRoot((d) => {
+      [view, setView] = createOptimisticStore<Row[]>(base);
+      createEffect(
+        () => {
+          void (view as unknown as { readonly [key: symbol]: unknown })[$TRACK];
+          runs++;
+        },
+        () => undefined,
+      );
+      return d;
+    });
+    flush();
+    expect(runs).toBe(1);
+    const settled = async () => {
+      flush();
+      await microtasks();
+      flush();
+    };
+    const fires = async (op: () => void): Promise<number> => {
+      const before = runs;
+      op();
+      await settled();
+      return runs - before;
+    };
+    // structural writes on the BASE reach a $TRACK read on the VIEW (chained read-through)
+    expect(await fires(() => setBase((d) => void d.push({ id: "d", name: "delta", qty: 4 })))).toBe(
+      1,
+    );
+    expect(await fires(() => setBase((d) => void d.splice(0, 1)))).toBe(1);
+    expect(await fires(() => setBase((d) => void (d[0]!.qty = 55)))).toBe(0);
+
+    const deferred = () => {
+      let reject!: (reason: Error) => void;
+      const promise = new Promise<never>((_, r) => (reject = r));
+      return { promise, reject };
+    };
+    // a field-only optimistic write is structurally silent on apply AND on revert
+    const editServer = deferred();
+    const edit = action(function* () {
+      setView((draft) => void (draft[1]!.qty = 1234));
+      yield editServer.promise;
+    });
+    const editPending = edit().catch(() => "failed");
+    expect(await fires(() => undefined)).toBe(0);
+    // the revert lands before the rejection handler runs: baseline taken before rejecting
+    let before = runs;
+    editServer.reject(new Error("boom"));
+    expect(await editPending).toBe("failed");
+    await settled();
+    expect(runs - before).toBe(0);
+    // an overlay structural op fires once on apply and once on revert (base row restored)
+    const removeServer = deferred();
+    const remove = action(function* () {
+      setView((draft) => void draft.splice(0, 1));
+      yield removeServer.promise;
+    });
+    const removePending = remove().catch(() => "failed");
+    expect(await fires(() => undefined)).toBe(1);
+    before = runs;
+    removeServer.reject(new Error("boom"));
+    expect(await removePending).toBe("failed");
+    await settled();
+    expect(runs - before).toBe(1);
+    expect(untrack(() => view.length)).toBe(3);
     dispose();
   });
 });

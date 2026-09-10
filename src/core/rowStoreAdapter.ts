@@ -264,19 +264,27 @@ export const createRowStoreAdapter = <TData>(
       }),
     );
 
-  // CATEGORY 1 EFFECT (§5.1: reactive → core push). Structural projection: the compute reads
-  // only the array's structure — $TRACK (self-node: index add/remove) plus length and every
-  // index identity via .map. Row FIELD writes notify the row's own nodes, not these, so field
-  // churn never re-runs this compute. The apply pointer-diffs the handle array against the
-  // previous pass (see the module note): heavy work — snapshot(row) + getRowKey + projection
-  // lifecycle — runs only for new/changed handles, then the key diff emits sync add/remove
-  // transactions (latency policy: structural = instant paint). NOT deferred: the first apply
-  // is load-bearing — it attaches projections to seeded entries and diffs any mutations that
+  // CATEGORY 1 EFFECT (§5.1: reactive → core push). Structural projection: the compute
+  // subscribes to ONE node — the array's key-set node behind `$TRACK`. On the rc.1+ store an
+  // array's key-set node bumps on any index or length change (push/splice/reorder/index
+  // replacement/truncation) and reads through an optimistic view's chain to the base store;
+  // row FIELD writes notify the row's own nodes, never this one (pinned per operation in
+  // test/unit/rowStoreAdapterDelta.test.tsx, "the $TRACK contract"). The handle array is
+  // read UNTRACKED: a tracked walk would materialize and re-subscribe one index node per row
+  // per pass — 100k nodes for a 100k store — for nothing the key-set node does not already
+  // say (100k rows, dev build, medians of 7: adapter boot 338 → 282 ms, one structural pass
+  // 106 → 82 ms, dispose 29 → 17 ms; what remains O(n) is the pointer diff itself, which is
+  // irreducible without splice deltas from the store). The apply pointer-diffs the handle
+  // array against the previous pass
+  // (see the module note): heavy work — snapshot(row) + getRowKey + projection lifecycle —
+  // runs only for new/changed handles, then the key diff emits sync add/remove transactions
+  // (latency policy: structural = instant paint). NOT deferred: the first apply is
+  // load-bearing — it attaches projections to seeded entries and diffs any mutations that
   // landed between adapter creation and the first flush against the seed baseline.
   createEffect(
     () => {
       void (store as unknown as { readonly [key: symbol]: unknown })[$TRACK];
-      return store.map((row) => row);
+      return untrack(() => Array.from(store));
     },
     (rows) => {
       const keys = new Array<string>(rows.length);
