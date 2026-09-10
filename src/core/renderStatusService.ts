@@ -22,10 +22,25 @@ export class RenderStatusService extends BeanStub implements IRenderStatusServic
     }
   }
 
+  // one pending drain at a time: cellValueChanged / rowNodeDataChanged fire ONCE PER ROW, so a
+  // 500-row update transaction reached this method 501 times and scheduled 501 macrotasks
+  // (the React wrapper does the same). The flag is set synchronously on every event, as
+  // before; the drain runs once per macrotask turn, after Solid's microtask batch has
+  // rendered the cells the queued autosize needs to measure.
+  private drainScheduled = false;
+
   private queueResizeOperationsForTick() {
     const colAutosize = this.beans.colAutosize!;
     colAutosize.shouldQueueResizeOperations = true;
+    if (this.drainScheduled) {
+      return;
+    }
+    this.drainScheduled = true;
     setTimeout(() => {
+      this.drainScheduled = false;
+      if (!this.isAlive()) {
+        return;
+      }
       colAutosize.processResizeOperations();
     }, 0);
   }
