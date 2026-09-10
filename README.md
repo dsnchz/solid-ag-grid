@@ -244,6 +244,10 @@ const App = () => {
 - [SSR guide](./docs/ssr.md) — the SSR contract, framework setup, and the server-import limitation.
 - AG Grid feature docs: [ag-grid.com](https://www.ag-grid.com/javascript-data-grid/getting-started/) — the grid core is identical across frameworks, so all feature documentation applies. Enterprise features require `ag-grid-enterprise` and a license.
 
+## Maintainers
+
+The [Maintainer's Field Guide](./docs/field-guide/00-how-to-use-this-guide.md) is the manual for working on this codebase: one chapter per milestone teaching the concepts the code depends on (AG Grid's architecture, the Solid 2.0 timing model, the anatomy of the port, the performance model), each ending with a guided reading list and self-test checkpoints. Read it before changing the rendering layer; it is where every design law is explained and where the tests that enforce them are named.
+
 ## Status & roadmap
 
 - **Release candidate**, tracking the Solid 2.0 RC line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
