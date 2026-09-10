@@ -140,3 +140,6 @@ dev-playground/dist/
 
 # Vitest browser-mode failure screenshots (transient; baselines live in test/browser/__screenshots__)
 .vitest-attachments/
+
+# porting references live in the gitignored tmp/ (see docs/field-guide/01-ag-grid-core-architecture.md)
+reference/

@@ -1,4 +1,5 @@
-// Export surface mirrors ag-grid-react v36 (reference/ag-grid-react-v36/src/index.ts).
+// Export surface mirrors ag-grid-react v36 (packages/ag-grid-react/src/index.ts in the AG Grid repo at
+// release-36.0.1 — local clone at tmp/ag-grid-36, see docs/field-guide/01).
 // Deliberate deltas from the React package:
 // - AgGridSolidRef: extra type export — React types its imperative handle as the AgGridReact
 //   class itself; we have no class, so the `{ api }` ref shape needs a name.

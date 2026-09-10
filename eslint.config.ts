@@ -12,7 +12,6 @@ export default defineConfig(
       "**/dist/**",
       "**/coverage/**",
       "**/node_modules/**",
-      "reference/**",
       "tmp/**",
       // standalone consumer app dogfooding the published package — has its own toolchain
       "playground/**",

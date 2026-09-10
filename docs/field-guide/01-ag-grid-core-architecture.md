@@ -104,13 +104,18 @@ frameworks — all of which our port needs:
 
 ## Guided reading (do this by hand, in order)
 
-1. `reference/ag-grid-react-v36/src/reactUi/agGridReactUi.tsx` — the entry.
+> **Where the references live.** They are not in the repository; `tmp/` is gitignored and holds local clones:
+> `tmp/ag-grid-36` is AG Grid at tag `release-36.0.1` (`git clone --branch release-36.0.1 --depth 1 https://github.com/ag-grid/ag-grid tmp/ag-grid-36`), whose `packages/ag-grid-react/src` is the React wrapper this port translates;
+> `tmp/ag-grid-31` is the same at `v31.1.1`; `tmp/reference/ag-grid-react-v31` and `tmp/reference/solid-v31` are the React wrapper and this package's own Solid 1 source at v31 (the latter is also in this repository's history before commit 523463f);
+> `tmp/solid` is the SolidJS 2.0 monorepo (`next` branch). Recreate any of them with a clone at the tag.
+
+1. `tmp/ag-grid-36/packages/ag-grid-react/src/reactUi/agGridReactUi.tsx` — the entry.
    Notice: `GridCoreCreator.create(...)` returns the API _synchronously_ while
    UI mounts async; find the two `whenReady` callbacks and what each gates.
-2. `reference/ag-grid-react-v36/src/reactUi/rows/rowComp.tsx` — a handed-in
+2. `tmp/ag-grid-36/packages/ag-grid-react/src/reactUi/rows/rowComp.tsx` — a handed-in
    ctrl consumer. Notice the compProxy literal, the single `setComp` call, and
    that every setter just writes framework state.
-3. `reference/solid-v31/grid/rows/rowComp.tsx` — the same component in Solid 1.
+3. `tmp/reference/solid-v31/grid/rows/rowComp.tsx` — the same component in Solid 1.
    Notice how mechanical the React→Solid translation is once you see the
    contract.
 4. `.agent/planning/ARCHITECTURE.md` §2–3 — the full contract and creation flow
