@@ -138,8 +138,10 @@ tmp/
 dev-playground/dist/
 *.tgz
 
-# Vitest browser-mode failure screenshots (transient; baselines live in test/browser/__screenshots__)
+# Vitest browser-mode failure artifacts (transient: attachments and per-test failure screenshots;
+# no test uses screenshot matchers, so there are no baselines to track)
 .vitest-attachments/
+test/browser/__screenshots__/
 
 # porting references live in the gitignored tmp/ (see docs/field-guide/01-ag-grid-core-architecture.md)
 reference/
