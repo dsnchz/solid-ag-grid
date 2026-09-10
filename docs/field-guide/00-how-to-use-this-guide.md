@@ -12,7 +12,7 @@ How to use it:
   for real understanding, not the prose.
 - **Checkpoints are self-tests.** If you can answer them without looking, you own
   that layer. If not, the answer is always in the listed files.
-- Chapters are written against specific versions (AG Grid v36, Solid 2.0 betas)
+- Chapters are written against specific versions (AG Grid v36, Solid 2.0 RCs)
   and updated when the ground shifts.
 
 Chapters:
@@ -25,3 +25,7 @@ Chapters:
 3. [Anatomy of the port](03-anatomy-of-the-port.md) — the module map, where
    every law is enforced and proven, data-flow walkthroughs, and the
    change-review checklist.
+4. [The performance model](04-performance-model.md) — where the time goes,
+   why core-jurisdiction attributes are imperative writes (and why that is the
+   doctrine, not an escape from it), the reactive graph budget, the harness and
+   its two measurement traps.
