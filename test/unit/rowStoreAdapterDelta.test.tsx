@@ -172,7 +172,7 @@ describe("row-handle identity (the probe the structural pointer-diff rests on)",
     dispose();
   });
 
-  it("optimistic view: nested base writes project through the per-key walk (solid#3323 fallback)", async () => {
+  it("optimistic view: nested base writes project through deep() (solid#3323 regression pin)", async () => {
     type NestedRow = { readonly id: string; meta: { note: string; tags: string[] } };
     const [base, setBase] = createStore<NestedRow[]>([
       { id: "a", meta: { note: "one", tags: ["x"] } },

@@ -290,8 +290,8 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element
     // creation runs one microtask off onSettled's scope: reading a pending async prop INSIDE
     // onSettled logs PENDING_ASYNC_FORBIDDEN_SCOPE (dev) even through latest(), because the
     // warning fires at read time in the forbidden scope. In a plain microtask a pending read
-    // either returns undefined (latest() on a never-resolved source) or throws a not-ready
-    // error — the per-key snapshot handles both as "absent" — so the async-rowData boot path
+    // throws a not-ready error (latest() on a never-resolved source, in every scope since
+    // rc.9) — the per-key snapshot handles it as "absent" — so the async-rowData boot path
     // produces zero console noise, contract unchanged (pinned by browser tests).
     queueMicrotask(() => untrack(createGrid));
   });

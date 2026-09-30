@@ -1,6 +1,5 @@
 import type { GridApi } from "ag-grid-community";
 import {
-  $PROXY,
   $TRACK,
   createEffect,
   createRoot,
@@ -9,7 +8,6 @@ import {
   onCleanup,
   runWithOwner,
   snapshot,
-  storeHasOptimisticFamily,
   untrack,
 } from "solid-js";
 
@@ -47,20 +45,12 @@ import {
 //   fast path + a WeakMap for handles that merely moved) and does heavy work ONLY on
 //   handles it has not seen: a key read for a re-handled existing row, `snapshot(row)` for
 //   a genuinely new row. Plain-store handles are identity-stable across moves/splices and
-//   field writes (pinned in test/unit/rowStoreAdapterDelta.test.tsx). Optimistic views are
-//   NOT (solid-js >= rc.1 store rewrite): a structural overlay op (push/splice) serves fresh
-//   proxies for EVERY row until revert/settle restores the originals, and a settle-confirm
-//   swaps the tentative row's handle for the base-backed one. Any handle change for a live
-//   key REBINDS that row's field projection — a projection left on a superseded handle
-//   would miss every later field write. Field-only optimistic writes churn nothing.
-// OPTIMISTIC-VIEW FALLBACK (solidjs/solid#3323, rc.1..rc.7): `deep(row)` over an optimistic
-// view never wakes on authoritative BASE writes (per-key tracked reads do; plain stores are
-// fine). Detected per store via storeHasOptimisticFamily (public since rc.4): optimistic
-// views take `trackedPlain(row)` — a per-key tracked walk that subscribes to every path of
-// the row through the proxy get trap and returns the same plain payload. It is NOT the
-// default because it materializes one signal per field instead of one witness per row
-// (measured rc.7, 100k rows x 20 fields: +762 MB vs +168 MB heap, 4x setup). Remove the
-// branch when #3323 lands; the rebind tests keep both paths honest.
+//   field writes (pinned in test/unit/rowStoreAdapterDelta.test.tsx). Optimistic views keep
+//   untouched rows' handles through a structural overlay op too (rc.8+, the solidjs/solid#3323
+//   fix; rc.1..rc.7 served fresh proxies for EVERY row), but a settle-confirm may still swap
+//   the tentative row's handle for the base-backed one. Any handle change for a live key
+//   REBINDS that row's field projection — a projection left on a superseded handle would miss
+//   every later field write.
 // The never-proxy assertions in test/unit/rowStoreAdapter.test.tsx and the flagship console
 // spy remain the detectors for any regression of the upstream snapshot guarantee.
 
@@ -104,40 +94,6 @@ type RowEntry<TData> = {
   dispose: (() => void) | null;
 };
 
-// the consumer's bundler replaces this (Vite/Rollup/webpack lib convention); typed locally so
-// the d.ts build stays free of @types/node
-declare const process: { readonly env: { readonly NODE_ENV?: string } } | undefined;
-
-const isStoreProxy = (value: unknown): value is object =>
-  value !== null &&
-  typeof value === "object" &&
-  (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
-
-/**
- * Per-key tracked plain copy (the optimistic-view fallback for `deep(row)`, see the module
- * note): every property of every nested store proxy is read through the get trap, which
- * subscribes the calling computation to that path, and `Object.keys` subscribes to the
- * record's key set. Non-proxy values are leaves and are returned as-is — exactly what
- * `snapshot()` does for raw-marked / non-wrappable values (Date, class instances).
- */
-const trackedPlain = (value: unknown): unknown => {
-  if (!isStoreProxy(value)) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    const out = new Array<unknown>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      out[i] = trackedPlain(value[i]);
-    }
-    return out;
-  }
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(value)) {
-    out[key] = trackedPlain((value as Record<string, unknown>)[key]);
-  }
-  return out;
-};
-
 export const createRowStoreAdapter = <TData>(
   params: RowStoreAdapterParams<TData>,
 ): RowStoreAdapter<TData> => {
@@ -169,17 +125,6 @@ export const createRowStoreAdapter = <TData>(
   // untrack: deliberately non-subscribing read (payload capture, not a dependency).
   const seedRows = untrack(() => snapshot(store)) as readonly TData[];
 
-  // see OPTIMISTIC-VIEW FALLBACK above — decided once per adapter; the store's family never
-  // changes over its lifetime
-  const perKeyTracking = storeHasOptimisticFamily(store);
-  if (perKeyTracking && typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
-    console.info(
-      "AG Grid: `rowStore` is an optimistic view — per-key field tracking is active " +
-        "(deep() over optimistic views misses base-store writes on Solid 2.0.0-rc.1+, " +
-        "solidjs/solid#3323). Expect higher memory per row than a plain store until the " +
-        "upstream fix ships.",
-    );
-  }
   for (const data of seedRows) {
     entries.set(getRowKey(data), { snap: data, handle: null, dispose: null });
   }
@@ -253,7 +198,7 @@ export const createRowStoreAdapter = <TData>(
         // { defer: true } skips the initial run: the compute still establishes tracking, but
         // the add transaction (or boot seed) already carried this exact data.
         createEffect(
-          () => (perKeyTracking ? trackedPlain(row) : deep(row)),
+          () => deep(row),
           (plain) => {
             pendingUpdates.set(key, plain as TData);
             scheduleUpdateFlush();

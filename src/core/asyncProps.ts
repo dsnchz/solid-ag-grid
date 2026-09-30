@@ -13,7 +13,7 @@ import { isPending, latest, NotReadyError } from "solid-js";
 //
 // HOW THE PROBE IS SHAPED (Solid ruling, documentation/solid-2.0/04-stores.md "A derive must
 // never swallow NotReadyError" / solid#3073 — branch on readiness with isPending() rather than
-// catching), measured on rc.7 (test "real async memo" below):
+// catching), measured on rc.7, re-verified on rc.11 (test "real async memo" below):
 // - refetch of an INITIALIZED source: the read holds the previous value in one phase and throws
 //   in a later one; isPending() reports true without throwing in both. So isPending() is the
 //   probe: a pending key is omitted, the pending-signal companion re-runs us when it lands.
