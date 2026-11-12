@@ -178,6 +178,72 @@ describe("RowComp + CellComp (browser)", () => {
     unmount();
   });
 
+  it("pinning and unpinning a column on the right adds and removes the right lane like vanilla, and the left lane's cells stay mounted", async () => {
+    const pinnedDefs: ColDef<CarRow>[] = [
+      { field: "make", pinned: "left" },
+      { field: "price" },
+      { field: "year" },
+    ];
+    const options: GridOptions<CarRow> = { columnDefs: pinnedDefs, rowData };
+    const vanilla = mountVanilla(options);
+    let apiRef: AgGridSolidRef<CarRow> | undefined;
+    const { container, unmount } = render(() => (
+      <AgGridSolid
+        containerStyle={{ height: "300px", width: "600px" }}
+        columnDefs={pinnedDefs}
+        rowData={rowData}
+        ref={(r) => (apiRef = r)}
+      />
+    ));
+    await waitFor(
+      () =>
+        apiRef != null &&
+        container.querySelectorAll(".ag-row .ag-grid-pinned-left-cells").length >= 3,
+    );
+    await settle();
+
+    const leftCell = (root: HTMLElement) =>
+      root.querySelector(
+        '.ag-row[row-index="0"] .ag-grid-pinned-left-cells .ag-cell[col-id="make"]',
+      );
+    const rightYear = (root: HTMLElement) =>
+      root.querySelector(
+        '.ag-row[row-index="0"] .ag-grid-pinned-right-cells .ag-cell[col-id="year"]',
+      );
+    const sLeftBefore = leftCell(container);
+    const vLeftBefore = leftCell(vanilla.container);
+    expect(sLeftBefore).not.toBeNull();
+    expect(rightYear(container)).toBeNull();
+
+    const pinRight = { state: [{ colId: "year", pinned: "right" as const }] };
+    vanilla.api.applyColumnState(pinRight);
+    apiRef!.api.applyColumnState(pinRight);
+    await waitFor(() => rightYear(container) != null && rightYear(vanilla.container) != null);
+    await settle();
+    // vanilla keeps the left lane's cell element; so must we
+    expect(leftCell(vanilla.container)).toBe(vLeftBefore);
+    expect(leftCell(container)).toBe(sLeftBefore);
+    expect(
+      container.querySelector(
+        '.ag-row[row-index="0"] .ag-grid-scrolling-cells .ag-cell[col-id="year"]',
+      ),
+    ).toBeNull();
+
+    const unpin = { state: [{ colId: "year", pinned: null }] };
+    vanilla.api.applyColumnState(unpin);
+    apiRef!.api.applyColumnState(unpin);
+    await waitFor(() => rightYear(container) == null && rightYear(vanilla.container) == null);
+    await settle();
+    const rightLane = (root: HTMLElement) =>
+      root.querySelector('.ag-row[row-index="0"] .ag-grid-pinned-right-cells') != null;
+    expect(rightLane(container)).toBe(rightLane(vanilla.container));
+    expect(leftCell(vanilla.container)).toBe(vLeftBefore);
+    expect(leftCell(container)).toBe(sLeftBefore);
+
+    vanilla.destroy();
+    unmount();
+  });
+
   it("sorting via api.applyColumnState reorders rows to match vanilla and preserves element identity (domOrder false)", async () => {
     const options: GridOptions<CarRow> = { columnDefs, rowData };
     const vanilla = mountVanilla(options);

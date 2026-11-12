@@ -113,9 +113,12 @@ const measure = async (rows: number, cols: number) => {
 //     docs/field-guide/04-performance-model.md)
 //   2026-11-12 framework-renderer hole: cell 9 / 12 (the keyed <Show> around the framework
 //     renderer is one hole; its condition and child memos are gone from every cell)
+//   2026-11-12 row lanes: row 10 / 6 (the two constant <Show>s — lanes vs full-width anchor —
+//     are decided once in the body; each pinned lane is one function hole over its own boolean
+//     signal, +1 signal by design: design note in docs/field-guide/04-performance-model.md)
 const BUDGET = {
   cell: { computations: 9, signals: 12 },
-  row: { computations: 27, signals: 5 },
+  row: { computations: 10, signals: 6 },
 };
 
 describe("reactive graph budget (dev owner-tree walk)", () => {

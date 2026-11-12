@@ -77,12 +77,12 @@ differencing grid sizes (header cells scale with columns, so rows are
 differenced at two column counts). The counts are deterministic, so the budget
 is pinned exactly:
 
-|                       | before the diet | now                                                       |
-| --------------------- | --------------- | --------------------------------------------------------- |
-| computations per cell | 41              | 9 (2026-11-12 Show diet + renderer hole, see below)       |
-| signals per cell      | 11              | 12 (`hasDetails` is its own signal, see below)            |
-| computations per row  | 40              | 27 (36.3 port: lanes fed by the ctrl, no partition memos) |
-| signals per row       | 11              | 5                                                         |
+|                       | before the diet | now                                                 |
+| --------------------- | --------------- | --------------------------------------------------- |
+| computations per cell | 41              | 9 (2026-11-12 Show diet + renderer hole, see below) |
+| signals per cell      | 11              | 12 (`hasDetails` is its own signal, see below)      |
+| computations per row  | 40              | 10 (2026-11-12 row lanes, see below)                |
+| signals per row       | 11              | 6 (one boolean per pinned lane, see below)          |
 
 Raise a budget only with a design note. A change that adds an effect, memo or
 `Show` branch to the cell or row mount fails here first — before it shows up as
@@ -140,6 +140,30 @@ it flips (first push, inline-edit start). In the diagnostics scenario,
 `showCellWrapper` re-runs drop from 104 to 0. The A/B is neutral (prod
 posture, interleaved, medians of 3): row swap 5.7 / 5.7 ms tall, 5.7 / 5.6
 wide; streaming and sync transactions within the harness's 0.1 ms noise.
+
+**Rows, 27 → 10 computations and 5 → 6 signals (2026-11-12).** Sixteen of the
+27 were four `<Show>`s at four nodes each (the `Show`, its `condition`,
+`condition value` and `value` memos). Two had constant conditions: lanes vs
+the full-width anchor never changes for a ctrl's life (a change rebuilds the
+RowCtrl), so each branch is now built once in the body and inserted as a value.
+The pinned-lane `Show`s read one `pinnedWidths` object; each lane is now one
+hole over its own boolean signal (the +1 signal), so pinning a column on one
+side never re-runs the other side's lane. Two Solid details decide the cost:
+
+- a hole passed as a **function value** (`{leftLane}` where `leftLane` is
+  `() => …`) is the insert's own render effect, one node; written as a JSX
+  ternary the compiler adds a condition memo and an expression memo on top;
+- function children inside **one fragment array are re-run together**: with
+  the two pinned holes in a fragment, a right-lane flip rebuilt the left lane's
+  cells. Each hole is its own child of the row element. The rowsCells test
+  "pinning and unpinning a column on the right" pins the left cell's identity
+  (vanilla keeps it too).
+
+Measured (prod posture, interleaved A/B vs the previous build, medians of 3):
+row swap 5.8 → 5.5 ms tall (runs 5.7–5.8 vs 5.5–5.6) and 5.6 → 5.5 ms wide
+(vanilla 4.6 / 4.4); allocation 67.2 → 62.8 KB per swap (runs do not
+overlap); initial render 46.9 → 44.1 ms tall and 16.4 → 15.1 ms wide, now at
+vanilla's 45.6 / 15.2; scroll and streaming unchanged.
 
 ## How to measure (and the two traps)
 

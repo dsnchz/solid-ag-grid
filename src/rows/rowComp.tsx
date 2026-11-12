@@ -81,11 +81,13 @@ const RowComp = (props: RowCompProps) => {
   // PINNED LANE WIDTHS ARE IMPERATIVE WRITES (the core-jurisdiction rule above): the ctrl is the
   // one writer (refreshPinnedSections) and nothing in our graph reads a width, so
   // refreshPinnedSections writes them as vanilla's RowComp does and a lane seeds its width from
-  // the ctrl as it mounts. Which pinned lanes exist does have readers — the lane Show branches —
-  // so that part is a signal, written only when it changes. The ctrl returns the same widths
-  // object while the widths are unchanged, so an unchanged refresh is skipped by identity.
+  // the ctrl as it mounts. Which pinned lanes exist does have readers — the lane holes — so
+  // those parts are signals, one boolean per lane: pinning a column on one side never re-runs
+  // (and remounts) the other side's lane. The ctrl returns the same widths object while the
+  // widths are unchanged, so an unchanged refresh is skipped by identity.
   let pinnedWidthsRef = rowCtrl.getMappedPinnedCellGroupWidths();
-  const [pinnedWidths, setPinnedWidths] = createSignal(pinnedWidthsRef);
+  const [renderLeft, setRenderLeft] = createSignal(pinnedWidthsRef.renderLeft);
+  const [renderRight, setRenderRight] = createSignal(pinnedWidthsRef.renderRight);
 
   // full-width state: signals drive the JSX; the plain mirrors are read back by the compProxy
   // getters/refresh paths, which the core may call mid-flush — before pending signal writes
@@ -129,9 +131,8 @@ const RowComp = (props: RowCompProps) => {
     eScrollingCells?.style.setProperty("width", `${widths.centerWidth}px`);
     ePinnedLeftCells?.parentElement?.style.setProperty("width", `${widths.leftWidth}px`);
     ePinnedRightCells?.parentElement?.style.setProperty("width", `${widths.rightWidth}px`);
-    if (widths.renderLeft !== prev.renderLeft || widths.renderRight !== prev.renderRight) {
-      setPinnedWidths(widths);
-    }
+    setRenderLeft(widths.renderLeft);
+    setRenderRight(widths.renderRight);
   };
 
   // Solid translation of React's `isComponentStateless` refresh split: all Solid comps are
@@ -527,6 +528,106 @@ const RowComp = (props: RowCompProps) => {
     </Show>
   );
 
+  // ROW CONTENT IS DECIDED ONCE (per-row diet): showLanes and the full-width split are fixed for
+  // the life of the ctrl (see the full-width effects above), so each branch is built here and
+  // inserted as a value — no <Show>, no condition memos. Lane content is built the same way.
+  // The lane getters must return undefined once a lane unmounts (React nulls refs on unmount;
+  // Solid refs don't re-run) — the core reads them for embedded full-width targets and
+  // pinned-section hit-testing, and a stale detached element would be used. The scrolling lane
+  // lives as long as the row, so its cleanup registers on the row; a pinned lane's registers in
+  // its hole's branch.
+  const laneContent = (lane: 0 | 1 | 2, section: HorizontalSection) =>
+    showEmbeddedFullWidth ? embeddedSectionJsx(section) : cellsJsx(lane);
+
+  // ONE HOLE PER PINNED LANE, NOT A <Show>: renderLeft/renderRight are booleans the ctrl
+  // writes, so a hole re-runs only when its lane appears or goes; it builds the lane untracked
+  // and owns it. Lane widths are seeded as each lane mounts; refreshPinnedSections writes the
+  // rest.
+  const pinnedLeftJsx = () => {
+    onCleanup(() => (ePinnedLeftCells = undefined));
+    const { leftWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
+    const content = laneContent(0, "left");
+    return (
+      <div
+        class="ag-grid-pinned-left-cells"
+        role="presentation"
+        style={{ width: `${leftWidth}px` }}
+      >
+        <div
+          class="ag-grid-container-wrapper"
+          role="presentation"
+          ref={(el) => (ePinnedLeftCells = el)}
+        >
+          {content}
+        </div>
+      </div>
+    );
+  };
+
+  const pinnedRightJsx = () => {
+    onCleanup(() => (ePinnedRightCells = undefined));
+    const { rightWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
+    const content = laneContent(2, "right");
+    return (
+      <div
+        class="ag-grid-pinned-right-cells"
+        role="presentation"
+        style={{ width: `${rightWidth}px` }}
+      >
+        <div
+          class="ag-grid-container-wrapper"
+          role="presentation"
+          ref={(el) => (ePinnedRightCells = el)}
+        >
+          {content}
+        </div>
+      </div>
+    );
+  };
+
+  // passed as functions, not written as ternaries in JSX: the insert itself is the hole's one
+  // computation (a JSX ternary adds compiler condition and expression memos on top). Each hole
+  // must be its OWN child of the row element: function children inside one fragment array are
+  // re-run together, so a right-lane flip would rebuild the left lane's cells.
+  const pinnedLeftHole = () => (renderLeft() ? untrack(pinnedLeftJsx) : undefined);
+  const pinnedRightHole = () => (renderRight() ? untrack(pinnedRightJsx) : undefined);
+
+  const scrollingLaneJsx = () => {
+    onCleanup(() => (eScrollingCells = undefined));
+    const { centerWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
+    const content = laneContent(1, "center");
+    return (
+      <div
+        class="ag-grid-scrolling-cells"
+        role="presentation"
+        ref={(el) => (eScrollingCells = el)}
+        style={{ width: `${centerWidth}px` }}
+      >
+        {content}
+      </div>
+    );
+  };
+
+  const fullWidthAnchorJsx = () => {
+    const content = fullWidthFrameworkJsx();
+    return (
+      <div
+        class="ag-full-width-anchor"
+        role={fullWidthAnchorRole}
+        ref={(el) => (eFullWidthAnchor = el)}
+      >
+        {content}
+      </div>
+    );
+  };
+
+  // showLanes and the full-width anchor are complementary: a lanes row gets the two pinned holes
+  // and the scrolling lane, a full-width row gets the anchor; the rest are undefined
+  const leftLane = showLanes ? pinnedLeftHole : undefined;
+  const scrollingLane = showLanes ? scrollingLaneJsx() : undefined;
+  const rightLane = showLanes ? pinnedRightHole : undefined;
+  const fullWidthAnchor = showLanes ? undefined : fullWidthAnchorJsx();
+
   return (
     <div
       ref={setRef}
@@ -536,80 +637,10 @@ const RowComp = (props: RowCompProps) => {
       row-id={initialRowId}
       row-business-key={initialBusinessKey}
     >
-      {/* the lane getters must return undefined once a lane unmounts (React nulls refs on
-          unmount; Solid refs don't re-run) — the core reads them for embedded full-width
-          targets and pinned-section hit-testing, and a stale detached element would be used.
-          Show function children give a scope to register the branch cleanups in. */}
-      <Show when={showLanes}>
-        {(_lanes) => {
-          onCleanup(() => (eScrollingCells = undefined));
-          // lane widths are seeded as each lane mounts; refreshPinnedSections writes the rest
-          const { centerWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
-          return (
-            <>
-              <Show when={pinnedWidths().renderLeft}>
-                {(_left) => {
-                  onCleanup(() => (ePinnedLeftCells = undefined));
-                  const { leftWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
-                  return (
-                    <div
-                      class="ag-grid-pinned-left-cells"
-                      role="presentation"
-                      style={{ width: `${leftWidth}px` }}
-                    >
-                      <div
-                        class="ag-grid-container-wrapper"
-                        role="presentation"
-                        ref={(el) => (ePinnedLeftCells = el)}
-                      >
-                        {showEmbeddedFullWidth ? embeddedSectionJsx("left") : cellsJsx(0)}
-                      </div>
-                    </div>
-                  );
-                }}
-              </Show>
-              <div
-                class="ag-grid-scrolling-cells"
-                role="presentation"
-                ref={(el) => (eScrollingCells = el)}
-                style={{ width: `${centerWidth}px` }}
-              >
-                {showEmbeddedFullWidth ? embeddedSectionJsx("center") : cellsJsx(1)}
-              </div>
-              <Show when={pinnedWidths().renderRight}>
-                {(_right) => {
-                  onCleanup(() => (ePinnedRightCells = undefined));
-                  const { rightWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
-                  return (
-                    <div
-                      class="ag-grid-pinned-right-cells"
-                      role="presentation"
-                      style={{ width: `${rightWidth}px` }}
-                    >
-                      <div
-                        class="ag-grid-container-wrapper"
-                        role="presentation"
-                        ref={(el) => (ePinnedRightCells = el)}
-                      >
-                        {showEmbeddedFullWidth ? embeddedSectionJsx("right") : cellsJsx(2)}
-                      </div>
-                    </div>
-                  );
-                }}
-              </Show>
-            </>
-          );
-        }}
-      </Show>
-      <Show when={isFullWidth && !showEmbeddedFullWidth}>
-        <div
-          class="ag-full-width-anchor"
-          role={fullWidthAnchorRole}
-          ref={(el) => (eFullWidthAnchor = el)}
-        >
-          {fullWidthFrameworkJsx()}
-        </div>
-      </Show>
+      {leftLane}
+      {scrollingLane}
+      {rightLane}
+      {fullWidthAnchor}
     </div>
   );
 };
