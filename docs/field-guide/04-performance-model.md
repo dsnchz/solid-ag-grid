@@ -79,7 +79,7 @@ is pinned exactly:
 
 |                       | before the diet | now                                                       |
 | --------------------- | --------------- | --------------------------------------------------------- |
-| computations per cell | 41              | 12 (2026-11-12 Show diet, see below)                      |
+| computations per cell | 41              | 9 (2026-11-12 Show diet + renderer hole, see below)       |
 | signals per cell      | 11              | 12 (`hasDetails` is its own signal, see below)            |
 | computations per row  | 40              | 27 (36.3 port: lanes fed by the ctrl, no partition memos) |
 | signals per row       | 11              | 5                                                         |
@@ -88,23 +88,27 @@ Raise a budget only with a design note. A change that adds an effect, memo or
 `Show` branch to the cell or row mount fails here first — before it shows up as
 scroll jank on a wide grid.
 
-What is left per cell: one keyed `Show` (the framework renderer — it remounts on
-a class or `renderKey` change and scopes the refresh bridge), two memos with
-equality cuts (wrapper decision, renderer identity) and the JSX holes. The
-2026-11-12 Show diet removed three `<Show>`s, each a stack of two or three memos
-over a condition that was already cheap:
+What is left per cell: two memos with equality cuts (wrapper decision,
+renderer identity) and the JSX holes. No `<Show>` remains on a plain cell's
+mount path; the one left in the cell (the `ag-cell-value` span) exists only on
+wrapper cells. The 2026-11-12 Show diet removed four `<Show>`s, each a stack of
+two or three memos over a condition that was already cheap:
 
 - **value visibility** (React's `showCellValue`) is one more read in the
   framework-renderer memo and in `rawValue`: with no details both already
   render nothing, so only "not inline-editing" had to be folded in;
-- the **editor branch** and the **wrapper/no-wrapper** decision are one hole
-  each: `() => cond() ? untrack(branch) : …`. The hole's computation re-runs
-  only when its input changes (the editor on `editDetails` identity — keyed
-  semantics; the wrapper on the boolean memo), builds the branch untracked, and
+- the **editor branch**, the **wrapper/no-wrapper** decision and the
+  **framework renderer** are one hole each: `() => cond() ? untrack(branch) : …`.
+  The hole's computation re-runs only when its input changes (the editor on
+  `editDetails` identity — keyed semantics; the wrapper on the boolean memo;
+  the renderer on `frameworkRendererInfo`, which cuts on class + `renderKey`
+  exactly where the keyed `Show` remounted), builds the branch untracked, and
   owns everything the branch creates, disposing it on the next run, which is
-  what the `Show` gave us. A `Show` is still the tool when the condition reads
-  async data (its guards handle held transitions); these conditions are plain
-  signals the ctrl writes.
+  what the `Show` gave us. The renderer hole also returns the raw value or the
+  JS renderer's element when there is no framework renderer, replacing the
+  `Show`'s fallback. A `Show` is still the tool when the condition reads async
+  data (its guards handle held transitions); these conditions are plain signals
+  the ctrl writes, and the renderer's async reads stay inside its `<Loading>`.
 
 Measured (prod posture, interleaved A/B, medians of 3): row swap 6.2 → 5.5 ms
 tall (vanilla 4.1; ×1.51 → ×1.31) and 6.1 → 5.4 ms wide (vanilla 4.0), about a
@@ -113,6 +117,17 @@ ticks 0.93 → 0.80 ms. The rest of the gap is the graph's floor plus
 allocation. Recycling components across swaps would remove most of it and is
 rejected: it breaks the ctrl→comp `setComp` contract the whole port rests on,
 and neither vanilla nor React recycles.
+
+The renderer hole (cell 12 → 9 computations) was measured on its own, against
+the Show-diet build (prod posture, interleaved A/B, medians of 3): row swap 6.1
+→ 5.6 ms tall and 5.9 → 5.6 ms wide (vanilla 4.5 / 4.3; the runs do not
+overlap), allocation 71.9 → 67.2 KB per swap; initial render and streaming
+ticks unchanged within noise. Value ticks re-run the same scopes as before (4
+for a Solid-renderer cell, 2 for a plain one): the hole is the `Show`'s
+fallback memo under another name, so the saving is all at mount. A remount
+trades re-runs for creations, which a re-run budget cannot see, so the
+diagnostics test also pins the renderer's element identity across a value
+tick.
 
 **Signals per cell, 11 → 12 (2026-11-12).** `hasDetails` was a plain function,
 `compDetails() !== undefined`. The ctrl replaces the `compDetails` object on

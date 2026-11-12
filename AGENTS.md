@@ -16,7 +16,7 @@ Read `docs/field-guide/` before changing `src/`. Chapter 3 maps the code and has
 | `pnpm build`     | Vite lib build plus `.d.ts` and source (`solid` condition) emits                              |
 | `pnpm dev`       | Dev playground (`dev-playground/`). It serves Solid's `/__solid/diagnostics` endpoint         |
 
-Gate before every commit: `format:check`, `lint`, `typecheck`, `test`, `build`. Run `test:perf` for anything that touches the cell or row mount path. `check:solid` is advisory; its baseline is 21 warnings and 19 errors. A change that raises either count adds a finding: read it before committing.
+Gate before every commit: `format:check`, `lint`, `typecheck`, `test`, `build`. Run `test:perf` for anything that touches the cell or row mount path. `check:solid` is advisory; its baseline is 20 warnings and 19 errors. A change that raises either count adds a finding: read it before committing.
 
 ## Solid 2.0
 

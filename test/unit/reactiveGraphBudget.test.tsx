@@ -111,8 +111,10 @@ const measure = async (rows: number, cols: number) => {
 //   2026-11-12 hasDetails signal: cell 12 / 12 (+1 signal by design — an equality boundary at
 //     the source so value refreshes stop re-running the wrapper memo; design note in
 //     docs/field-guide/04-performance-model.md)
+//   2026-11-12 framework-renderer hole: cell 9 / 12 (the keyed <Show> around the framework
+//     renderer is one hole; its condition and child memos are gone from every cell)
 const BUDGET = {
-  cell: { computations: 12, signals: 12 },
+  cell: { computations: 9, signals: 12 },
   row: { computations: 27, signals: 5 },
 };
 
