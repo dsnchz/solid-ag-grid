@@ -128,7 +128,7 @@ export const App = () => {
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-title">solid-ag-grid</span>
-          <span class="brand-sub">dogfood playground · v36.0.0-next.3</span>
+          <span class="brand-sub">dogfood playground · v{__SOLID_AG_GRID_VERSION__}</span>
         </div>
         <nav>
           <For each={SCENARIOS}>
@@ -143,7 +143,7 @@ export const App = () => {
           </For>
         </nav>
         <div class="sidebar-foot">
-          published package · npm <code>36.0.0-next.3</code>
+          published package · npm <code>{__SOLID_AG_GRID_VERSION__}</code>
         </div>
       </aside>
       <main class="content">
