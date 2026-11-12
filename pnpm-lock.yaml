@@ -23,6 +23,9 @@ importers:
       '@solid-primitives/resize-observer':
         specifier: 4.0.0-next.7
         version: 4.0.0-next.7(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(solid-js@2.0.0-rc.21)
+      '@solidjs/diagnostics':
+        specifier: 2.0.0-rc.21
+        version: 2.0.0-rc.21(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(solid-js@2.0.0-rc.21)(vitest@5.1.0(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(jsdom@31.0.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0)))
       '@solidjs/testing-library':
         specifier: 1.0.0-rc.2
         version: 1.0.0-rc.2(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(solid-js@2.0.0-rc.21)
@@ -719,6 +722,16 @@ packages:
 
   '@solidjs/compiler@2.0.0-rc.21':
     resolution: {integrity: sha512-nhI5oCRx+ArUxcJtnesRb7pArO5zhTd/hef2I+dBD10MYwrQNM7ftpDdNVv7fQh/dH5xvqAnpWN4tUhZavo4ng==}
+
+  '@solidjs/diagnostics@2.0.0-rc.21':
+    resolution: {integrity: sha512-7PYq4MyR17BzPHCRkaZNjEkXcSdAc3Kg5AsYD3lG8IFFlXsZlbU1jXTtWEC5qIURptt9h+eAQySxuTeSGJku3Q==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-rc.21
+      solid-js: ^2.0.0-rc.21
+      vitest: '>=2.0.0'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@solidjs/signals@2.0.0-rc.21':
     resolution: {integrity: sha512-F1TUMO/nd1XC//+tcaWxibOOgXBHQGmNQnAeiDnpLh+1smnlwIgKF6pc20evlyfQwqf0gP6rH4sNEqCPBNcpgg==}
@@ -2567,6 +2580,14 @@ snapshots:
       '@solidjs/compiler-linux-x64-gnu': 2.0.0-rc.21
       '@solidjs/compiler-wasm32-wasi': 2.0.0-rc.21
       '@solidjs/compiler-win32-x64-msvc': 2.0.0-rc.21
+
+  '@solidjs/diagnostics@2.0.0-rc.21(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(solid-js@2.0.0-rc.21)(vitest@5.1.0(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(jsdom@31.0.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0)))':
+    dependencies:
+      '@solidjs/signals': 2.0.0-rc.21
+      '@solidjs/web': 2.0.0-rc.21(solid-js@2.0.0-rc.21)
+      solid-js: 2.0.0-rc.21
+    optionalDependencies:
+      vitest: 5.1.0(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(jsdom@31.0.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
 
   '@solidjs/signals@2.0.0-rc.21': {}
 
