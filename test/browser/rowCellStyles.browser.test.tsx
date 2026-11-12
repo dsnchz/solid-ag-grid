@@ -97,6 +97,23 @@ const snapshot = (root: Element) => {
   }));
 };
 
+/**
+ * The grid's DOM rows are exactly its rendered nodes. After a scroll the core removes rows that
+ * left the viewport on a delay, so two grids sampled at one instant can be at different points
+ * of that removal (a CI flake: 27 rows vs 38). Waiting for each grid to converge on its own
+ * rendered set keeps the comparison about what each grid renders, not when the timer fires.
+ */
+const domMatchesRendered = (root: Element, api: GridApi<Row>): boolean => {
+  const domIds = snapshot(root)
+    .map((r) => r.id)
+    .sort();
+  const renderedIds = api
+    .getRenderedNodes()
+    .map((n) => n.id ?? "")
+    .sort();
+  return JSON.stringify(domIds) === JSON.stringify(renderedIds);
+};
+
 describe("row/cell attributes and styles vs vanilla (imperative writes)", () => {
   it("mount, style-changing data update, sort and scroll all match vanilla", async () => {
     const vanilla = mountVanilla(options());
@@ -145,6 +162,8 @@ describe("row/cell attributes and styles vs vanilla (imperative writes)", () => 
     await waitFor(
       () => vanilla.container.querySelector('.ag-row[row-index="45"] .ag-cell') != null,
     );
+    await waitFor(() => domMatchesRendered(solid.container, solid.api()));
+    await waitFor(() => domMatchesRendered(vanilla.container, vanilla.api));
     await settle();
     expect(snapshot(solid.container)).toEqual(snapshot(vanilla.container));
 
