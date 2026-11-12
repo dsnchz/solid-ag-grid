@@ -70,7 +70,7 @@
     "test:coverage": "vitest run --coverage --project unit --project ssr --project browser",
     "pkg:changeset": "changeset",
     "pkg:version": "changeset version && node scripts/sync-jsr-version.mjs",
-    "pkg:publish": "pnpm build && changeset publish"
+    "pkg:publish": "pnpm build && changeset publish && node scripts/sync-pre-tag.mjs"
   },
   "dependencies": {
     "ag-stack": "36.3.0"

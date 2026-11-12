@@ -89,7 +89,7 @@ Solid tooling installed in `node_modules`:
 
 - **Conventional Commits** (`feat:`, `fix:`, `perf(cells):`, `test:`, `chore:`; `!` marks breaking changes). The body states what changed, why, and the evidence: measured numbers, mutation checks, the gate. Add a `Co-Authored-By:` trailer for the agent.
 - **Stage paths explicitly; never `git add -A`.** Vitest browser mode writes failure attachments to `.vitest/` (gitignored), and the history was rewritten once to remove committed attachments.
-- **Changesets** are in pre mode (`next` tag); entries are `patch`, written for consumers. `pkg:version` syncs `jsr.json`. Publishing is the maintainer's call.
+- **Changesets** are in pre mode (`next` tag); entries are `patch`, written for consumers. `pkg:version` syncs `jsr.json` (run `pnpm format` after it; the sync re-expands arrays). Publishing is the maintainer's call: `NPM_CONFIG_OTP=<code> pnpm pkg:publish` publishes and points `next` at the new version with one 2FA code (while no stable release exists, changesets itself tags `latest`), then `bunx jsr publish` (browser authorization). Check both dist-tags afterwards: npm processes a publish for a few minutes before the tarball installs.
 - **Upstream first.** Do not work around a Solid or AG Grid regression in library code. File it with a headless, signals-only (or vanilla-grid) repro, verified to reproduce, then pin it in a test.
 
 ## Local-only context
