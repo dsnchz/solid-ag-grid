@@ -12,6 +12,7 @@ import type {
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
 import { _addStylesToElement, _removeFromParent, CssClassManager } from "ag-stack";
+import type { Accessor } from "solid-js";
 import {
   createEffect,
   createMemo,
@@ -188,40 +189,35 @@ const CellComp = (props: CellCompProps) => {
 
   // JS (non-framework) renderer instance lifecycle; its gui inserts as derived JSX in the
   // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed.
-  // LAZY (per-cell diet): the lifecycle effect + gui signal are created under this component's
-  // owner the first time a non-framework compDetails arrives (setRenderDetails is the only
-  // writer), so a plain-value or framework-renderer cell never creates them. The insert reads
-  // `jsGui`, a plain signal that exists from mount and is bridged from the renderer's gui.
-  // isCellRenderer() cannot gate this at mount: refreshShouldDestroy does not cover renderer
-  // changes, so a column may gain a renderer in place.
+  // LAZY (per-cell diet): the lifecycle effect is created under this component's owner the
+  // first time a non-framework compDetails arrives (setRenderDetails is the only writer), so a
+  // plain-value or framework-renderer cell never creates it. The insert reads `jsGui`, which
+  // exists from mount: a slot signal that receives the renderer's own gui accessor when the
+  // renderer is created (derived, no relay effect). isCellRenderer() cannot gate this at mount:
+  // refreshShouldDestroy does not cover renderer changes, so a column may gain a renderer in
+  // place.
   const owner = getOwner();
-  const [jsGui, setJsGui] = createSignal<HTMLElement | undefined>(undefined, {
-    ownedWrite: true,
-  });
+  const [jsGuiSource, setJsGuiSource] = createSignal<Accessor<HTMLElement | undefined>>();
+  const jsGui = () => jsGuiSource()?.();
   let jsRenderer: JsCellRenderer | undefined;
   const ensureJsRenderer = () => {
     if (jsRenderer || context.isDestroyed()) {
       return;
     }
-    runWithOwner(owner, () => {
-      const renderer = createJsCellRenderer({
+    const renderer = runWithOwner(owner, () =>
+      createJsCellRenderer({
         context,
         compDetails,
         force,
         suppress: suppressJsRenderer,
         // a torn-down renderer's setTooltip registration must not outlive it
         onRendererDestroyed: () => cellCtrl.resetCellRendererTooltip(),
-      });
-      // bridge (cleanup-free: an effect callback may only return a function or undefined)
-      createEffect(
-        () => renderer.gui(),
-        (gui) => {
-          setJsGui(gui);
-        },
-        { name: "CellComp.jsRendererGui" },
-      );
-      jsRenderer = renderer;
-    });
+      }),
+    );
+    jsRenderer = renderer;
+    // written outside runWithOwner: a write with an owner active is an owned-scope write.
+    // The updater form, because a bare function argument would be read as `(prev) => next`
+    setJsGuiSource(() => renderer.gui);
   };
 
   // ctrl.setComp needs the root cell element plus (when present) the spanned wrapper and the
