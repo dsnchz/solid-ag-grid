@@ -27,6 +27,8 @@ const browser = () => ({
 export default defineConfig({
   plugins: [solid()],
   test: {
+    // inherited by the unit and browser projects (ssr and perf set `extends: false`)
+    setupFiles: ["test/setup/cleanup.ts"],
     projects: [
       {
         extends: true,
