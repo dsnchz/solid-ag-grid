@@ -289,14 +289,16 @@ describe("re-run budgets (update granularity)", () => {
     return artifact;
   };
 
-  it("one Solid-renderer cell's value: only that cell's five scopes re-run", async () => {
+  it("one Solid-renderer cell's value: only that cell's four scopes re-run", async () => {
     const { data, api, grid } = await mountForUpdates();
     const artifact = await captureUpdate(() =>
       api.applyTransaction({ update: [{ ...data[3]!, price: 999 }] }),
     );
-    // wrapper check, renderer props merge, renderer identity, refresh bridge, the renderer's text
-    expectRerunBudget(artifact, 5);
+    // renderer props merge, renderer identity, refresh bridge, the renderer's text
+    expectRerunBudget(artifact, 4);
     expectRerunBudget(artifact, 1, { scope: "frameworkRendererInfo" });
+    // the wrapper decision reads the hasDetails flag, which a value refresh never flips
+    expectRerunBudget(artifact, 0, { scope: "showCellWrapper" });
     expect(grid.container.querySelector('.ag-row[row-id="r3"] b')?.textContent).toBe("999");
   });
 

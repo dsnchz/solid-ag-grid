@@ -108,8 +108,11 @@ const measure = async (rows: number, cols: number) => {
 //   2026-11-12 Show diet: cell 12 / 11 (value visibility folded into the framework-renderer
 //     memo and rawValue instead of a non-keyed <Show>; the editor branch and the
 //     wrapper/no-wrapper decision are one hole each instead of a <Show>)
+//   2026-11-12 hasDetails signal: cell 12 / 12 (+1 signal by design — an equality boundary at
+//     the source so value refreshes stop re-running the wrapper memo; design note in
+//     docs/field-guide/04-performance-model.md)
 const BUDGET = {
-  cell: { computations: 12, signals: 11 },
+  cell: { computations: 12, signals: 12 },
   row: { computations: 27, signals: 5 },
 };
 

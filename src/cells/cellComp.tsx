@@ -83,7 +83,11 @@ const CellComp = (props: CellCompProps) => {
     hasRenderer ? undefined : cellCtrl.getValueToDisplay(),
   );
   const [force, setForce] = createSignal<boolean>(false);
-  const hasDetails = () => compDetails() !== undefined;
+  // "has details" as its own boolean signal, written beside compDetails: the ctrl replaces the
+  // compDetails object on every value refresh, so a reader deriving the flag from it re-ran on
+  // every tick to produce the same boolean (WASTED_RECOMPUTE on showCellWrapper, CI). The
+  // signal's `===` equality notifies only when the flag flips: first push, inline edit start.
+  const [hasDetails, setHasDetails] = createSignal<boolean>(!hasRenderer);
   const [editDetails, setEditDetails] = createSignal<EditDetails | undefined>();
   const [renderKey, setRenderKey] = createSignal<number>(1);
   // bumped by CellEditorComponentProxy's refreshProps — drives the reactive editor-props
@@ -267,7 +271,7 @@ const CellComp = (props: CellCompProps) => {
           ensureJsRenderer();
         }
         const setDetails = () => {
-          // three writes, one flush; each signal's `===` equality skips the unchanged parts.
+          // four writes, one flush; each signal's `===` equality skips the unchanged parts.
           // The updater's `prev` is the latest WRITTEN compDetails (pending writes included),
           // like React's setState updater: removing or replacing a renderer drops the outgoing
           // one's setTooltip registration so the column default applies again
@@ -278,6 +282,7 @@ const CellComp = (props: CellCompProps) => {
             }
             return next;
           });
+          setHasDetails(true);
           setValue(() => value);
           setForce(force);
         };
@@ -297,6 +302,7 @@ const CellComp = (props: CellCompProps) => {
               ensureJsRenderer();
             }
             setCompDetails(loadingComp);
+            setHasDetails(true);
             setValue(undefined);
             setForce(false);
             onReady.then(() => setDetails());
@@ -325,6 +331,7 @@ const CellComp = (props: CellCompProps) => {
           if (!popup) {
             // inline editing replaces the value: "no details" until the ctrl re-pushes
             setCompDetails(undefined);
+            setHasDetails(false);
             setValue(undefined);
           }
         } else {

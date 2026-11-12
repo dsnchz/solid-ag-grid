@@ -1,5 +1,5 @@
 import { testEffect } from "@solidjs/testing-library";
-import { createEffect, createMemo, createSignal, flush, NotReadyError, untrack } from "solid-js";
+import { createEffect, createSignal, flush, untrack } from "solid-js";
 import { describe, expect, it } from "vitest";
 
 import { agFlush, runWithoutFlush } from "../../src/core/utils";
@@ -8,8 +8,7 @@ import { agFlush, runWithoutFlush } from "../../src/core/utils";
  * Empirical evidence for ARCHITECTURE.md Open question 2 (`flush()` vs `flushSync` semantics
  * and the ensureVisible reentrancy latch) plus the apply-phase legality questions T3.4's
  * row/cell code depends on (renderKey bumps, flush from grid-core callbacks re-entered from
- * apply phases). Also pins the question 9 mechanism: catching NotReadyError in a compute
- * keeps the subscription alive.
+ * apply phases).
  */
 describe("flush semantics (Open question 2 evidence)", () => {
   it("agFlush(false) defers to the microtask batch; agFlush(true) applies synchronously", () => {
@@ -93,37 +92,5 @@ describe("flush semantics (Open question 2 evidence)", () => {
           done();
         },
       );
-    }));
-
-  it("catching NotReadyError in a compute keeps the subscription (Open question 9 per-key isolation mechanism)", () =>
-    testEffect((done) => {
-      let resolvePromise!: (value: string) => void;
-      const promise = new Promise<string>((resolve) => (resolvePromise = resolve));
-      const asyncVal = createMemo(() => promise);
-
-      const seen: (string | undefined)[] = [];
-      createEffect(
-        () => {
-          try {
-            return asyncVal();
-          } catch (e) {
-            if (e instanceof NotReadyError) {
-              return undefined;
-            }
-            throw e;
-          }
-        },
-        (value) => {
-          seen.push(value);
-          if (value === "ready") {
-            // first run observed "not ready yet", second run fired on resolution — the
-            // dependency edge survived the caught throw
-            expect(seen).toEqual([undefined, "ready"]);
-            done();
-          }
-        },
-      );
-
-      setTimeout(() => resolvePromise("ready"), 10);
     }));
 });

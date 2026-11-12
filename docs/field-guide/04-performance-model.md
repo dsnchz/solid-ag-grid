@@ -80,7 +80,7 @@ is pinned exactly:
 |                       | before the diet | now                                                       |
 | --------------------- | --------------- | --------------------------------------------------------- |
 | computations per cell | 41              | 12 (2026-11-12 Show diet, see below)                      |
-| signals per cell      | 11              | 11 (three `renderDetails` parts replaced one object)      |
+| signals per cell      | 11              | 12 (`hasDetails` is its own signal, see below)            |
 | computations per row  | 40              | 27 (36.3 port: lanes fed by the ctrl, no partition memos) |
 | signals per row       | 11              | 5                                                         |
 
@@ -113,6 +113,18 @@ ticks 0.93 → 0.80 ms. The rest of the gap is the graph's floor plus
 allocation. Recycling components across swaps would remove most of it and is
 rejected: it breaks the ctrl→comp `setComp` contract the whole port rests on,
 and neither vanilla nor React recycles.
+
+**Signals per cell, 11 → 12 (2026-11-12).** `hasDetails` was a plain function,
+`compDetails() !== undefined`. The ctrl replaces the `compDetails` object on
+every value refresh, so the wrapper memo and the `ag-cell-value` `Show` re-ran
+on every tick to produce the same boolean. CI's diagnostics test caught it as
+`WASTED_RECOMPUTE` on `showCellWrapper`. Solid's guide puts the equality
+boundary at the source, not on the reader: the flag is now a boolean signal,
+written beside `compDetails` at its three write sites, and notifies only when
+it flips (first push, inline-edit start). In the diagnostics scenario,
+`showCellWrapper` re-runs drop from 104 to 0. The A/B is neutral (prod
+posture, interleaved, medians of 3): row swap 5.7 / 5.7 ms tall, 5.7 / 5.6
+wide; streaming and sync transactions within the harness's 0.1 ms noise.
 
 ## How to measure (and the two traps)
 
