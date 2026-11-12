@@ -75,6 +75,7 @@ const setup = () => {
   const created: TestJsRenderer[] = [];
   const [details, setDetails] = createSignal<RenderDetails>();
   const [suppress, setSuppress] = createSignal(false);
+  const onRendererDestroyed = vi.fn();
 
   let renderer!: ReturnType<typeof createJsCellRenderer>;
   const dispose = createRoot((d) => {
@@ -83,11 +84,21 @@ const setup = () => {
       compDetails: () => details()?.compDetails ?? (details() ? null : undefined),
       force: () => details()?.force,
       suppress,
+      onRendererDestroyed,
     });
     return d;
   });
   flush();
-  return { context, destroyed, created, setDetails, setSuppress, renderer, dispose };
+  return {
+    context,
+    destroyed,
+    created,
+    setDetails,
+    setSuppress,
+    onRendererDestroyed,
+    renderer,
+    dispose,
+  };
 };
 
 describe("createJsCellRenderer (JS renderer lifecycle)", () => {
@@ -255,5 +266,42 @@ describe("createJsCellRenderer (JS renderer lifecycle)", () => {
     expect(t.renderer.instance()).toBeUndefined();
     expect(t.renderer.gui()).toBeUndefined();
     t.dispose();
+  });
+
+  it("tooltip reset on teardown: not when a Solid renderer takes over, never at disposal", () => {
+    const t = setup();
+    const showJs = (value: string) => {
+      t.setDetails({ compDetails: makeCompDetails(value, t.created), value, force: false });
+      flush();
+    };
+
+    // a Solid renderer replacing the JS one has already mounted and may have registered its
+    // own tooltip: resetting here would clear the successor's registration
+    showJs("a");
+    t.setDetails({
+      compDetails: makeCompDetails("b", t.created, { componentFromFramework: true }),
+      value: "b",
+      force: false,
+    });
+    flush();
+    expect(t.destroyed).toHaveLength(1);
+    expect(t.onRendererDestroyed).not.toHaveBeenCalled();
+
+    // removal and inline-edit suppression leave no successor: the registration is dropped
+    showJs("c");
+    t.setDetails({ compDetails: undefined, value: "c", force: false });
+    flush();
+    expect(t.onRendererDestroyed).toHaveBeenCalledTimes(1);
+    showJs("d");
+    t.setSuppress(true);
+    flush();
+    expect(t.onRendererDestroyed).toHaveBeenCalledTimes(2);
+
+    // final disposal: the cell's tooltip feature dies with it
+    t.setSuppress(false);
+    flush();
+    expect(t.renderer.instance()).toBeDefined();
+    t.dispose();
+    expect(t.onRendererDestroyed).toHaveBeenCalledTimes(2);
   });
 });

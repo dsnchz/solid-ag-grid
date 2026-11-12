@@ -1,3 +1,4 @@
+import { _PUBLIC_EVENT_HANDLERS_MAP } from "ag-grid-community";
 import { isPending, latest, NotReadyError } from "solid-js";
 
 // ASYNC GRID-OPTION PROPS VERDICT (ARCHITECTURE.md Open question 9, resolved T3.4):
@@ -77,16 +78,33 @@ export const snapshotGridProps = (
   return snapshot;
 };
 
-/** Diffs two prop snapshots by reference equality, returning only the changed keys. */
+const eventHandlerProps = new Set<string>(Object.values(_PUBLIC_EVENT_HANDLERS_MAP));
+
+/**
+ * Diffs two prop snapshots by reference equality, returning only the changed keys. An event
+ * handler dropped from the props object (in `prevKeys`, not in `nextKeys`) is reported as
+ * `undefined` so the grid stops calling it; other dropped keys keep their value (ag-grid-react
+ * parity). The key lists are the props object's own keys, NOT the snapshots': a pending async
+ * key is omitted from its snapshot yet still present on props, so a pending handler keeps its
+ * value like any other pending key (omitted ≠ undefined — the SWR contract of the verdict above).
+ */
 export const extractGridPropertyChanges = (
   prevProps: { [key: string]: any },
   nextProps: { [key: string]: any },
+  prevKeys: readonly string[],
+  nextKeys: readonly string[],
 ): { [p: string]: any } => {
   const changes: { [p: string]: any } = {};
   for (const propKey of Object.keys(nextProps)) {
     const propValue = nextProps[propKey];
     if (prevProps[propKey] !== propValue) {
       changes[propKey] = propValue;
+    }
+  }
+  // a dropped event handler prop must stop being called; other dropped props keep their value
+  for (const propKey of prevKeys) {
+    if (eventHandlerProps.has(propKey) && !nextKeys.includes(propKey)) {
+      changes[propKey] = undefined;
     }
   }
 

@@ -54,9 +54,11 @@ It is not a performance hack layered on top of the doctrine; it _is_ Chapter 2's
 doctrine ("code must tell the truth about what is reactive") applied to
 attributes. Reactivity for state that fans out; direct writes for pushes that
 terminate in the DOM. The list today: row index / id / business key, top,
-transform, user row/cell styles, and the four editing classes. Each is pinned
-against vanilla in `test/browser/rowCellStyles.browser.test.tsx` and
-`cellStateTransitions.browser.test.tsx`.
+transform, user row/cell styles, pinned lane widths (36.3 port), and the four
+editing classes. Each is pinned against vanilla in
+`test/browser/rowCellStyles.browser.test.tsx`,
+`cellStateTransitions.browser.test.tsx` and (lane widths, including a resize)
+`rowsCells.browser.test.tsx`.
 
 The corollary for `createEffect`: before adding one to a hot component, ask
 which `Show` branch owns the state it reacts to, and whether that state has a
@@ -75,12 +77,12 @@ differencing grid sizes (header cells scale with columns, so rows are
 differenced at two column counts). The counts are deterministic, so the budget
 is pinned exactly:
 
-|                       | before the diet | now                                                  |
-| --------------------- | --------------- | ---------------------------------------------------- |
-| computations per cell | 41              | 23                                                   |
-| signals per cell      | 11              | 11 (three `renderDetails` parts replaced one object) |
-| computations per row  | 40              | 32                                                   |
-| signals per row       | 11              | 5                                                    |
+|                       | before the diet | now                                                       |
+| --------------------- | --------------- | --------------------------------------------------------- |
+| computations per cell | 41              | 23                                                        |
+| signals per cell      | 11              | 11 (three `renderDetails` parts replaced one object)      |
+| computations per row  | 40              | 27 (36.3 port: lanes fed by the ctrl, no partition memos) |
+| signals per row       | 11              | 5                                                         |
 
 Raise a budget only with a design note. A change that adds an effect, memo or
 `Show` branch to the cell or row mount fails here first — before it shows up as

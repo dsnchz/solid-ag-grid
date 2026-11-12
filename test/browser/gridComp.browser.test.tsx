@@ -47,7 +47,9 @@ describe("GridComp shell (browser)", () => {
 
     const rootWrapper = container.querySelector(".ag-root-wrapper") as HTMLDivElement;
     expect(rootWrapper).not.toBeNull();
-    const body = rootWrapper.firstElementChild as HTMLDivElement;
+    // GridCtrl.setComp's aria-description container comes first, then the body wrapper
+    expect(rootWrapper.children[0]!.classList.contains("ag-aria-description-container")).toBe(true);
+    const body = rootWrapper.children[1] as HTMLDivElement;
     expect(body.classList.contains("ag-root-wrapper-body")).toBe(true);
     expect(body.classList.contains("ag-focus-managed")).toBe(true);
 
@@ -82,6 +84,15 @@ describe("GridComp shell (browser)", () => {
     const vBody = vanilla.container.querySelector(".ag-root-wrapper-body")!;
     const sBody = container.querySelector(".ag-root-wrapper-body")!;
     expect(sortedClasses(sBody)).toEqual(sortedClasses(vBody));
+
+    // both lead the root wrapper with the aria-description container, then the body wrapper
+    for (const [root, body] of [
+      [vRoot, vBody],
+      [sRoot, sBody],
+    ] as const) {
+      expect(root.children[0]!.classList.contains("ag-aria-description-container")).toBe(true);
+      expect(root.children[1]).toBe(body);
+    }
 
     // both place the tab guards first/last inside the body wrapper
     const vBodyChildren = Array.from(vBody.children);

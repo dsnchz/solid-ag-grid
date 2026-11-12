@@ -146,15 +146,20 @@ describe("GridBodyComp + header shell (browser)", () => {
       expect(container.querySelector(`.${sectionClass}`)!.parentElement).toBe(sScrollable);
     }
 
-    // CSS vars: the top section carries --ag-top-rows-height / --ag-header-rows-height like vanilla
-    const vTop = vanilla.container.querySelector<HTMLElement>(".ag-grid-pinned-top-rows")!;
-    const sTop = container.querySelector<HTMLElement>(".ag-grid-pinned-top-rows")!;
-    expect(sTop.style.getPropertyValue("--ag-top-rows-height")).toBe(
-      vTop.style.getPropertyValue("--ag-top-rows-height"),
-    );
-    expect(sTop.style.getPropertyValue("--ag-header-rows-height")).toBe(
-      vTop.style.getPropertyValue("--ag-header-rows-height"),
-    );
+    // CSS vars: the viewport carries the internal header/top/bottom row heights like vanilla
+    // (GridHeaderCtrl writes the header one; the body comp writes the pinned-section ones)
+    const vViewportEl = vanilla.container.querySelector<HTMLElement>(".ag-grid-viewport")!;
+    const sViewportEl = container.querySelector<HTMLElement>(".ag-grid-viewport")!;
+    for (const cssVar of [
+      "--ag-internal-header-rows-height",
+      "--ag-internal-top-rows-height",
+      "--ag-internal-bottom-rows-height",
+    ]) {
+      const vValue = vViewportEl.style.getPropertyValue(cssVar);
+      // guards against a vacuous "" === "" pass if the core moves the var again
+      expect(vValue, `vanilla is missing ${cssVar}`).not.toBe("");
+      expect(sViewportEl.style.getPropertyValue(cssVar), `${cssVar} differs`).toBe(vValue);
+    }
 
     // fake scrollbars live as direct children of ag-root in both
     expect(container.querySelector(".ag-body-horizontal-scroll")!.parentElement).toBe(

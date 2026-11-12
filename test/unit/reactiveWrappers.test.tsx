@@ -17,6 +17,7 @@ import type {
   IStatusPanelParams,
   IToolPanelParams,
 } from "ag-grid-community";
+import { ProvidedFilter } from "ag-grid-community";
 import { untrack } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -27,6 +28,7 @@ import { SolidComponent } from "../../src/core/solidComponent";
 import { SolidFrameworkComponentWrapper } from "../../src/core/solidFrameworkComponentWrapper";
 import { CellEditorComponentProxy } from "../../src/customComp/cellEditorComponentProxy";
 import { CellRendererComponentWrapper } from "../../src/customComp/cellRendererComponentWrapper";
+import { ColumnSelectionLabelRendererComponentWrapper } from "../../src/customComp/columnSelectionLabelRendererComponentWrapper";
 import { CustomComponentWrapper } from "../../src/customComp/customComponentWrapper";
 import { CustomOverlayComponentWrapper } from "../../src/customComp/customOverlayComponentWrapper";
 import { DateComponentWrapper } from "../../src/customComp/dateComponentWrapper";
@@ -324,6 +326,21 @@ describe("FloatingFilterComponentProxy (no portal)", () => {
     (proxy as unknown as { afterGuiAttached: () => void }).afterGuiAttached();
     expect(afterGuiAttached).toHaveBeenCalledTimes(1);
   });
+
+  it("passes suppressDeprecationWarning to a ProvidedFilter parent (grid-initiated setModel)", () => {
+    const setModel = vi.fn().mockReturnValue(undefined);
+    const providedFilter: object = Object.create(ProvidedFilter.prototype);
+    Object.assign(providedFilter, { setModel });
+    const filterChangedCallback = vi.fn();
+    const params = {
+      parentFilterInstance: (cb: (instance: unknown) => void) => cb(providedFilter),
+      filterParams: { filterChangedCallback },
+    } as unknown as IFloatingFilterParams;
+    const proxy = new FloatingFilterComponentProxy(params, vi.fn());
+
+    proxy.getProps().onModelChange("Kia");
+    expect(setModel).toHaveBeenCalledWith("Kia", true);
+  });
 });
 
 describe("FloatingFilterDisplayComponentProxy (no portal)", () => {
@@ -454,11 +471,23 @@ describe("simple refresh wrappers (jsdom)", () => {
     const Comp: UserSolidComponent = (props) => <div class="cr">{`v=${props.value}`}</div>;
     const wrapper = new CellRendererComponentWrapper(Comp, portalManager, {
       name: "cellRenderer",
-      cellRenderer: true,
+      supportsJsFunction: true,
     });
     await agPromiseToPromise(wrapper.init({ value: 1 } as never));
     expect(wrapper.refresh({ value: 2 } as never)).toBe(true);
     await waitFor(() => wrapper.getGui().textContent === "v=2");
+    wrapper.destroy();
+  });
+
+  it("ColumnSelectionLabelRendererComponentWrapper.refresh returns true and pushes params", async () => {
+    const portalManager = newHostedManager();
+    const Comp: UserSolidComponent = (props) => <div class="csl">{`v=${props.displayName}`}</div>;
+    const wrapper = new ColumnSelectionLabelRendererComponentWrapper(Comp, portalManager, {
+      name: "columnLabelRenderer",
+    });
+    await agPromiseToPromise(wrapper.init({ displayName: "A" } as never));
+    expect(wrapper.refresh({ displayName: "B" } as never)).toBe(true);
+    await waitFor(() => wrapper.getGui().textContent === "v=B");
     wrapper.destroy();
   });
 
@@ -514,6 +543,41 @@ describe("ToolPanelComponentWrapper (jsdom, enterprise slot, mocked type)", () =
     expect(wrapper.refresh({ onStateUpdated } as unknown as IToolPanelParams)).toBe(true);
     wrapper.destroy();
   });
+
+  it("applies params.initialState on init/restore but keeps reported state across refreshToolPanel", async () => {
+    const portalManager = newHostedManager();
+    const onStateUpdated = vi.fn();
+    const captured: { onStateChange?: (state: unknown) => void } = {};
+    const Comp: UserSolidComponent = (props) => {
+      captured.onStateChange = untrack(() => props.onStateChange);
+      return <div class="tp">{`state=${props.state ?? "none"}`}</div>;
+    };
+    const wrapper = new ToolPanelComponentWrapper(Comp, portalManager, { name: "toolPanel" });
+    const initParams = { onStateUpdated, initialState: "restored" } as unknown as IToolPanelParams;
+    await agPromiseToPromise(wrapper.init(initParams));
+    expect(wrapper.getState()).toBe("restored");
+    expect(wrapper.getGui().textContent).toBe("state=restored");
+
+    captured.onStateChange!("expanded");
+    // api.refreshToolPanel() re-presents the applied params: reported state survives
+    expect(wrapper.refresh(initParams)).toBe(true);
+    expect(wrapper.getState()).toBe("expanded");
+
+    // a restore hands over fresh params: their initialState wins
+    const restoreParams = {
+      onStateUpdated,
+      initialState: "restored",
+    } as unknown as IToolPanelParams;
+    expect(wrapper.refresh(restoreParams)).toBe(true);
+    expect(wrapper.getState()).toBe("restored");
+    await waitFor(() => wrapper.getGui().textContent === "state=restored");
+
+    // fresh params without initialState leave the state alone
+    captured.onStateChange!("collapsed");
+    expect(wrapper.refresh({ onStateUpdated } as unknown as IToolPanelParams)).toBe(true);
+    expect(wrapper.getState()).toBe("collapsed");
+    wrapper.destroy();
+  });
 });
 
 describe("MenuItemComponentWrapper (jsdom, enterprise slot, mocked type)", () => {
@@ -560,7 +624,9 @@ describe("SolidFrameworkComponentWrapper switch", () => {
   const createWrapperFor = (name: string, gridOptions: Record<string, unknown>) => {
     const portalManager = new PortalManager();
     const frameworkWrapper = new SolidFrameworkComponentWrapper(portalManager, gridOptions);
-    const componentType: ComponentType = { name, cellRenderer: name === "cellRenderer" };
+    // UserComponentFactory sets the grid id on wire, before any createWrapper call
+    frameworkWrapper.setGridId("test-grid");
+    const componentType: ComponentType = { name, supportsJsFunction: name === "cellRenderer" };
     return (
       frameworkWrapper as unknown as {
         createWrapper: (comp: unknown, type: ComponentType) => unknown;
@@ -584,11 +650,17 @@ describe("SolidFrameworkComponentWrapper switch", () => {
     expect(createWrapperFor("noRowsOverlayComponent", opts)).toBeInstanceOf(
       CustomOverlayComponentWrapper,
     );
+    expect(createWrapperFor("overlayComponent", opts)).toBeInstanceOf(
+      CustomOverlayComponentWrapper,
+    );
     expect(createWrapperFor("activeOverlay", opts)).toBeInstanceOf(CustomOverlayComponentWrapper);
     expect(createWrapperFor("statusPanel", opts)).toBeInstanceOf(StatusPanelComponentWrapper);
     expect(createWrapperFor("toolPanel", opts)).toBeInstanceOf(ToolPanelComponentWrapper);
     expect(createWrapperFor("menuItem", opts)).toBeInstanceOf(MenuItemComponentWrapper);
     expect(createWrapperFor("cellRenderer", opts)).toBeInstanceOf(CellRendererComponentWrapper);
+    expect(createWrapperFor("columnLabelRenderer", opts)).toBeInstanceOf(
+      ColumnSelectionLabelRendererComponentWrapper,
+    );
     expect(createWrapperFor("innerHeaderComponent", opts)).toBeInstanceOf(
       InnerHeaderComponentWrapper,
     );

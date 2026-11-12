@@ -51,6 +51,7 @@ const GridComp = (props: GridCompProps) => {
 
   let gridCtrl: GridCtrl | undefined;
   let eRootWrapper: HTMLDivElement | undefined;
+  let eAriaDescription: HTMLDivElement | undefined;
   let tabGuardRef: TabGuardRef | undefined;
   let paginationComp: JsTabGuardComp | undefined;
   let focusableContainers: FocusableContainerComp[] = [];
@@ -70,9 +71,12 @@ const GridComp = (props: GridCompProps) => {
   // COROLLARY: ref callbacks may freely WRITE signals but must not READ signal-backed props —
   // unowned reads mid-flush return the stale committed value (see the `context` capture above).
   // Evidence for both halves: test/unit/setCompScopes.test.tsx.
-  const setRef = (eRef: HTMLDivElement) => {
-    eRootWrapper = eRef;
-    if (context.isDestroyed()) {
+  // setComp also needs the aria-description child, and Solid applies refs parent-first (the
+  // reverse of React's commit order, where the child ref is set before the parent's), so the
+  // guarded setup runs from both refs and fires once both exist (order-independent; same
+  // pattern as TabGuardComp.setupCtrl)
+  const setupGridCtrl = () => {
+    if (!eRootWrapper || !eAriaDescription || gridCtrl || context.isDestroyed()) {
       return;
     }
 
@@ -87,6 +91,13 @@ const GridComp = (props: GridCompProps) => {
         }
         tabGuardRef?.forceFocusOutOfContainer(up);
       },
+      focusNextElementOutsideContainer: (up: boolean, eExcludeContainers: HTMLElement[]) =>
+        eRootWrapper
+          ? (tabGuardRef?.focusNextElementOutsideContainer(up, [
+              eRootWrapper,
+              ...eExcludeContainers,
+            ]) ?? false)
+          : false,
       updateLayoutClasses: setLayoutClass,
       getFocusableContainers: () => {
         const beforeGridBody: FocusableContainer[] = [];
@@ -120,9 +131,19 @@ const GridComp = (props: GridCompProps) => {
       setUserSelect,
     };
 
-    gridCtrl.setComp(compProxy, eRef);
+    gridCtrl.setComp(compProxy, eRootWrapper, eAriaDescription);
 
     setInitialised(true);
+  };
+
+  const setRef = (eRef: HTMLDivElement) => {
+    eRootWrapper = eRef;
+    setupGridCtrl();
+  };
+
+  const setAriaDescriptionRef = (eRef: HTMLDivElement) => {
+    eAriaDescription = eRef;
+    setupGridCtrl();
   };
 
   onCleanup(() => {
@@ -235,9 +256,9 @@ const GridComp = (props: GridCompProps) => {
   );
 
   const topStyle = createMemo<JSX.CSSProperties>(() => ({
-    "user-select": userSelect() != null ? (userSelect() as any) : "",
-    "-webkit-user-select": userSelect() != null ? (userSelect() as any) : "",
-    cursor: cursor() != null ? cursor()! : "",
+    "user-select": (userSelect() ?? "") as JSX.CSSProperties["user-select"],
+    "-webkit-user-select": (userSelect() ?? "") as JSX.CSSProperties["-webkit-user-select"],
+    cursor: cursor() ?? "",
   }));
 
   const setTabGuardCompRef = (ref: TabGuardRef) => {
@@ -258,6 +279,7 @@ const GridComp = (props: GridCompProps) => {
 
   return (
     <div ref={setRef} class={rootWrapperClasses()} style={topStyle()} role="presentation">
+      <div class="ag-aria-description-container" ref={setAriaDescriptionRef} />
       <div class={rootWrapperBodyClasses()} ref={setGridBodyParent} role="presentation">
         <Show when={readyBodyParent()}>
           {(eBodyParent) => (

@@ -35,9 +35,10 @@ const waitFor = async (cond: () => boolean, timeoutMs = 5000): Promise<void> => 
   }
 };
 
-/** Minimal fake BeanCollection: identity createBean/destroyBean + a stubbed registry. */
+/** Minimal fake BeanCollection: identity createBean/destroyBean + a stubbed registry/log. */
 const makeFakeBeans = (dynamicBeans: { [name: string]: unknown }, gosValues: object = {}) => {
   const destroyed: unknown[] = [];
+  const log = { warn: vi.fn() };
   const beans = {
     context: {
       isDestroyed: () => false,
@@ -56,8 +57,9 @@ const makeFakeBeans = (dynamicBeans: { [name: string]: unknown }, gosValues: obj
       get: (key: string) => (gosValues as { [key: string]: unknown })[key],
     },
     rowModel: {},
+    log,
   };
-  return { beans: beans as unknown as BeanCollection, destroyed };
+  return { beans: beans as unknown as BeanCollection, destroyed, log };
 };
 
 describe("GroupCellRenderer (jsdom shell contract, mocked groupCellRendererCtrl)", () => {
@@ -193,7 +195,7 @@ describe("DetailCellRenderer (jsdom shell contract, mocked detailCellRendererCtr
       refresh: vi.fn(() => true),
       registerDetailWithMaster,
     };
-    const { beans, destroyed } = makeFakeBeans({ detailCellRendererCtrl: ctrl }, gosValues);
+    const { beans, destroyed, log } = makeFakeBeans({ detailCellRendererCtrl: ctrl }, gosValues);
     let handle: { refresh(): boolean } | undefined;
     const params = {
       api: { getGridId: () => "master-grid" },
@@ -211,6 +213,7 @@ describe("DetailCellRenderer (jsdom shell contract, mocked detailCellRendererCtr
       handle: () => handle,
       registerDetailWithMaster,
       destroyed,
+      log,
       ...result,
     };
   };
@@ -284,12 +287,10 @@ describe("DetailCellRenderer (jsdom shell contract, mocked detailCellRendererCtr
   });
 
   it("warns when a string template param is provided (not supported outside string-template frameworks)", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { unmount } = setup({ template: "<div>custom</div>" as never });
-    // _warn(230) — the full "template is not supported" text is only resolved when a grid's
-    // ValidationModule is live; outside a grid the core logs the warning id + docs link
-    expect(warnSpy.mock.calls.some((call) => call.join(" ").includes("#230"))).toBe(true);
-    warnSpy.mockRestore();
+    const { log, unmount } = setup({ template: "<div>custom</div>" as never });
+    // routed through the grid-scoped log bean (beans.log), so the diagnostic is attributed to
+    // the master grid — ag-grid-react 36.3 replaced the free `_warn(230)` the same way
+    expect(log.warn).toHaveBeenCalledWith(230);
     unmount();
   });
 });

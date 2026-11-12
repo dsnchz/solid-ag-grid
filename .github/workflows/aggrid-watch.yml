@@ -1,8 +1,9 @@
 name: AG Grid compatibility watch
 
 # AG Grid internals are not semver-governed: a v36 minor can move symbols
-# this deep integration depends on. Build weekly against the newest ^36
-# release so drift surfaces here instead of in user issues.
+# this deep integration depends on, so the package pins ag-grid-community
+# exactly. Build weekly against the newest ^36 release so the next port's
+# drift surfaces here instead of in user issues.
 
 on:
   schedule:
@@ -20,8 +21,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Bump ag-grid-community to newest ^36
-        run: pnpm update ag-grid-community
+      - name: Bump ag-grid-community + ag-stack to newest ^36 (past the exact pins)
+        run: pnpm add -D "ag-grid-community@^36" && pnpm add "ag-stack@^36"
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm exec playwright install chromium --with-deps

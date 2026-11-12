@@ -19,25 +19,26 @@ Because the rendering layer is Solid, your components are real Solid components 
 ## Installation
 
 ```bash
-npm install @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.11 @solidjs/web@2.0.0-rc.11
+npm install @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js@2.0.0-rc.11 @solidjs/web@2.0.0-rc.11
 # or
-pnpm add @dschz/solid-ag-grid ag-grid-community solid-js@2.0.0-rc.11 @solidjs/web@2.0.0-rc.11
+pnpm add @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js@2.0.0-rc.11 @solidjs/web@2.0.0-rc.11
 ```
 
 Also available on [JSR](https://jsr.io/@dschz/solid-ag-grid) as TypeScript source (`npx jsr add @dschz/solid-ag-grid`).
 
 Peer dependencies:
 
-| Package             | Version        | Notes                                                           |
-| ------------------- | -------------- | --------------------------------------------------------------- |
-| `ag-grid-community` | `^36.0.0`      | The grid core. Our major always tracks AG Grid's major.         |
-| `solid-js`          | `^2.0.0-rc.11` | **Solid 2.0 RC or later required.** Solid 1.x is not supported. |
-| `@solidjs/web`      | `^2.0.0-rc.11` | Same version as `solid-js`.                                     |
+| Package             | Version        | Notes                                                               |
+| ------------------- | -------------- | ------------------------------------------------------------------- |
+| `ag-grid-community` | `36.3.0`       | The grid core, **exact version**. Our major tracks AG Grid's major. |
+| `solid-js`          | `^2.0.0-rc.11` | **Solid 2.0 RC or later required.** Solid 1.x is not supported.     |
+| `@solidjs/web`      | `^2.0.0-rc.11` | Same version as `solid-js`.                                         |
 
 Two things worth knowing:
 
 - **Solid 2.0 is API-frozen as of the RC**, so ranged versions (`^2.0.0-rc.11`) are now safe — the exact-pin discipline from the beta era is no longer required. This package is developed and tested against `2.0.0-rc.11`; we re-verify each RC deliberately.
-- **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package — it installs automatically; you never interact with it.
+- **`ag-grid-community` is pinned exactly**, as `ag-grid-react` pins it. AG Grid's internals are not semver-governed — this package integrates with them as deeply as the React wrapper does, and a v36 minor (36.1) broke earlier releases at load time. Each AG Grid release is ported deliberately; install the version in the table.
+- **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package, pinned to the same version — it installs automatically; you never interact with it.
 
 Your `tsconfig.json` / bundler must use Solid 2.0's JSX runtime:
 

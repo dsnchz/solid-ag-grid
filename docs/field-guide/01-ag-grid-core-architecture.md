@@ -105,7 +105,7 @@ frameworks — all of which our port needs:
 ## Guided reading (do this by hand, in order)
 
 > **Where the references live.** They are not in the repository; `tmp/` is gitignored and holds local clones:
-> `tmp/ag-grid-36` is AG Grid at tag `release-36.0.1` (`git clone --branch release-36.0.1 --depth 1 https://github.com/ag-grid/ag-grid tmp/ag-grid-36`), whose `packages/ag-grid-react/src` is the React wrapper this port translates;
+> `tmp/ag-grid-36` is AG Grid at tag `release-36.3.0` (`git clone --branch release-36.3.0 --depth 1 https://github.com/ag-grid/ag-grid tmp/ag-grid-36`), whose `packages/ag-grid-react/src` is the React wrapper this port translates (`git diff release-36.0.1 release-36.3.0 -- packages/ag-grid-react/src` is the 36.3 port's source; fetch both tags first);
 > `tmp/ag-grid-31` is the same at `v31.1.1`; `tmp/reference/ag-grid-react-v31` and `tmp/reference/solid-v31` are the React wrapper and this package's own Solid 1 source at v31 (the latter is also in this repository's history before commit 523463f);
 > `tmp/solid` is the SolidJS 2.0 monorepo (`next` branch). Recreate any of them with a clone at the tag.
 

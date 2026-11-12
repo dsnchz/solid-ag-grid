@@ -7,16 +7,14 @@ import { BeansContext } from "../core/beansContext";
 import HeaderRowsComp from "./headerRowsComp";
 
 type GridHeaderCompProps = {
-  eTopSection: HTMLElement;
   eGridViewport: HTMLElement;
 };
 
 const GridHeaderComp = (props: GridHeaderCompProps) => {
-  const { context, environment } = useContext(BeansContext);
+  const { context } = useContext(BeansContext);
 
-  // signal-backed props (GridBodyComp passes `topElement()` / `gridViewportElement()`) consumed
-  // inside the ref callback — capture once in the body (see the setComp verdict in gridComp.tsx)
-  const eTopSection = untrack(() => props.eTopSection);
+  // signal-backed prop (GridBodyComp passes `gridViewportElement()`) consumed inside the ref
+  // callback — capture once in the body (see the setComp verdict in gridComp.tsx)
   const eGridViewport = untrack(() => props.eGridViewport);
 
   let gridHeaderCtrl: GridHeaderCtrl | undefined;
@@ -37,23 +35,18 @@ const GridHeaderComp = (props: GridHeaderCompProps) => {
 
     cssManager.toggleCss("ag-header", true);
 
+    // header height is no longer pushed through the comp: GridHeaderCtrl sizes eGui and sets
+    // --ag-internal-header-rows-height on the viewport itself
     const compProxy: IGridHeaderComp = {
       toggleCss: (name, on) => cssManager.toggleCss(name, on),
-      setHeightAndMinHeight: (height) => {
-        const borderWidth = environment.getHeaderRowBorderWidth();
-        const heightWithBorder = height + borderWidth;
-        eTopSection.style.setProperty("--ag-header-rows-height", `${heightWithBorder}px`);
-        eRef.style.height = `${heightWithBorder}px`;
-      },
     };
 
     gridHeaderCtrl = context.createBean(new GridHeaderCtrl());
-    gridHeaderCtrl.setComp(compProxy, eRef);
+    gridHeaderCtrl.setComp(compProxy, eRef, eGridViewport);
     setMounted(true);
   };
 
   onCleanup(() => {
-    eTopSection.style.removeProperty("--ag-header-rows-height");
     gridHeaderCtrl = context.destroyBean(gridHeaderCtrl);
   });
 

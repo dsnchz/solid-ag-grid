@@ -65,6 +65,9 @@ const measure = async (rows: number, cols: number) => {
         columnDefs={columnDefs}
         rowData={rowData}
         getRowId={(p) => String(p.data.id)}
+        // jsdom has no layout (viewport width 0): AG Grid 36.3 (36.0.1 did not) virtualises
+        // columns against that width and mounts only the first two, so the census misses cells
+        suppressColumnVirtualisation
         ref={(r: AgGridSolidRef) => (api = r.api)}
       />
     ));
@@ -100,9 +103,11 @@ const measure = async (rows: number, cols: number) => {
 //   2026-09-09 lazy JS-renderer machinery + JS element on the framework fallback: cell 23 / 9
 //   2026-09-09 renderDetails split into compDetails/value/force: cell 23 / 11 (+2 signals by
 //     design — three part-signals replace one object so a value tick touches only the text)
+//   2026-11-11 AG Grid 36.3 port: row 27 / 5 (cell lanes fed straight from the ctrl's
+//     per-lane setCellCtrls instead of partition memos; pinned lane widths written to the DOM)
 const BUDGET = {
   cell: { computations: 23, signals: 11 },
-  row: { computations: 32, signals: 5 },
+  row: { computations: 27, signals: 5 },
 };
 
 describe("reactive graph budget (dev owner-tree walk)", () => {

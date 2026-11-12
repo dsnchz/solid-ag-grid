@@ -54,7 +54,7 @@ const RowContainerComp = (props: RowContainerCompProps) => {
   onSettled(() => insertDomComment(` AG Row Container ${name} `, eContainer));
 
   const updateRowCtrlsOrdered = (useFlush: boolean) => {
-    const next = getNextValueIfDifferent(prevRowCtrlsRef, rowCtrlsRef, domOrder)!;
+    const next = getNextValueIfDifferent(prevRowCtrlsRef, rowCtrlsRef, domOrder);
     if (next !== prevRowCtrlsRef) {
       prevRowCtrlsRef = next;
       agFlush(useFlush, () => setRowCtrlsOrdered(next));
@@ -62,7 +62,7 @@ const RowContainerComp = (props: RowContainerCompProps) => {
   };
 
   const updateSpannedRowCtrlsOrdered = (useFlush: boolean) => {
-    const next = getNextValueIfDifferent(prevSpannedRowCtrlsRef, spannedRowCtrlsRef, domOrder)!;
+    const next = getNextValueIfDifferent(prevSpannedRowCtrlsRef, spannedRowCtrlsRef, domOrder);
     if (next !== prevSpannedRowCtrlsRef) {
       prevSpannedRowCtrlsRef = next;
       agFlush(useFlush, () => setSpannedRowCtrlsOrdered(next));
@@ -111,6 +111,8 @@ const RowContainerComp = (props: RowContainerCompProps) => {
           eSpanContainerForCtrl.style.transform = `translateY(${offset})`;
         }
       },
+      // React guards this with a hiddenRef so an unchanged value schedules no render; the
+      // signal's equality check already drops an unchanged write
       setHidden: (value) => setHidden(value),
     };
 
@@ -136,9 +138,7 @@ const RowContainerComp = (props: RowContainerCompProps) => {
       }}
       role="presentation"
     >
-      <For each={spannedRowCtrlsOrdered()}>
-        {(rowCtrl) => <RowComp rowCtrl={rowCtrl} containerType={containerOptions.type} />}
-      </For>
+      <For each={spannedRowCtrlsOrdered()}>{(rowCtrl) => <RowComp rowCtrl={rowCtrl} />}</For>
     </div>
   );
 
@@ -152,10 +152,9 @@ const RowContainerComp = (props: RowContainerCompProps) => {
       role="presentation"
     >
       {/* default <For> keys by ctrl reference == React key={instanceId} (ctrl identity is
-          stable per instanceId); getNextValueIfDifferent already preserved DOM order */}
-      <For each={rowCtrlsOrdered()}>
-        {(rowCtrl) => <RowComp rowCtrl={rowCtrl} containerType={containerOptions.type} />}
-      </For>
+          stable per instanceId); getNextValueIfDifferent matches kept ctrls by identity (its
+          diffIndex stamp) and already preserved DOM order */}
+      <For each={rowCtrlsOrdered()}>{(rowCtrl) => <RowComp rowCtrl={rowCtrl} />}</For>
       {isSpanning ? buildSpanContainer() : null}
     </div>
   );

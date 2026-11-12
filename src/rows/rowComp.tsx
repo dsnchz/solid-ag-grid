@@ -5,22 +5,12 @@ import type {
   ICellRenderer,
   ICellRendererParams,
   IRowComp,
-  RowContainerType,
   RowCtrl,
   UserCompDetails,
 } from "ag-grid-community";
 import { _EmptyBean } from "ag-grid-community";
 import { _addStylesToElement, CssClassManager } from "ag-stack";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-  untrack,
-  useContext,
-} from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show, untrack, useContext } from "solid-js";
 
 import CellComp from "../cells/cellComp";
 import { BeansContext } from "../core/beansContext";
@@ -29,18 +19,22 @@ import { agFlush, getNextValueIfDifferent } from "../core/utils";
 
 type RowCompProps = {
   rowCtrl: RowCtrl;
-  containerType: RowContainerType;
 };
+
+/** The cells shown in the pinned-left, scrolling and pinned-right lanes, in that order. */
+type LaneCells = readonly [CellCtrl[] | undefined, CellCtrl[] | undefined, CellCtrl[] | undefined];
 
 const RowComp = (props: RowCompProps) => {
   const { context, editSvc, gos } = useContext(BeansContext);
 
-  // raw <For> items / literals — stable identity, capture once in the body (setComp verdict in
+  // raw <For> item — stable identity, capture once in the body (setComp verdict in
   // gridComp.tsx); untrack silences the top-level-read dev warning
   const rowCtrl = untrack(() => props.rowCtrl);
-  const containerType = untrack(() => props.containerType);
 
   const isFullWidth = rowCtrl.isFullWidth();
+  // fixed for the life of the ctrl, like isFullWidth: a loading row's anchor stands in as the
+  // gridcell that role="row" requires
+  const fullWidthAnchorRole = rowCtrl.getFullWidthAnchorRole();
   // embedded full-width: the full-width renderer repeats per pinned lane (embedFullWidthRows /
   // print layout); fixed for the life of the ctrl, like isFullWidth
   const showEmbeddedFullWidth = isFullWidth && rowCtrl.shouldCreateCellSections();
@@ -64,11 +58,34 @@ const RowComp = (props: RowCompProps) => {
   const initialTransform = isDisplayed ? rowCtrl.getInitialTransform() : undefined;
 
   let domOrder = rowCtrl.getDomOrder();
-  // Seeded so bulk-add doesn't flash empty rows; getInitialCellCtrls returns null when creation
-  // is deferred or not applicable.
-  let cellCtrlsRef: CellCtrl[] | null = rowCtrl.getInitialCellCtrls(containerType);
-  const [cellCtrls, setCellCtrls] = createSignal<CellCtrl[] | null>(cellCtrlsRef);
-  const [pinnedSectionsVersion, setPinnedSectionsVersion] = createSignal(0);
+  // one CellLane per pinned section, each seeded so bulk-add doesn't flash empty rows
+  // (getInitialCellCtrls returns undefined when creation is deferred or not applicable)
+  const lanes = [
+    new CellLane(rowCtrl.getInitialCellCtrls(0)),
+    new CellLane(rowCtrl.getInitialCellCtrls(1)),
+    new CellLane(rowCtrl.getInitialCellCtrls(2)),
+  ] as const;
+  // React renders each lane as its own memo'd component over its own store, so a change to one
+  // lane re-renders only that lane. Solid has no re-render to scope: each lane's <For> is its own
+  // scope already, and an unchanged lane keeps its list identity (the ctrl never mutates a list it
+  // gave; CellLane keeps the list it shows), so that lane's mapArray finds every cell in place
+  // and keeps its mapped array — no DOM work. One signal carries the three lanes, which keeps the
+  // per-row graph budget flat (test/unit/reactiveGraphBudget.test.tsx).
+  const [laneCells, setLaneCells] = createSignal<LaneCells>([
+    lanes[0].cells,
+    lanes[1].cells,
+    lanes[2].cells,
+  ]);
+  const notifyLanes = () => setLaneCells([lanes[0].cells, lanes[1].cells, lanes[2].cells]);
+
+  // PINNED LANE WIDTHS ARE IMPERATIVE WRITES (the core-jurisdiction rule above): the ctrl is the
+  // one writer (refreshPinnedSections) and nothing in our graph reads a width, so
+  // refreshPinnedSections writes them as vanilla's RowComp does and a lane seeds its width from
+  // the ctrl as it mounts. Which pinned lanes exist does have readers — the lane Show branches —
+  // so that part is a signal, written only when it changes. The ctrl returns the same widths
+  // object while the widths are unchanged, so an unchanged refresh is skipped by identity.
+  let pinnedWidthsRef = rowCtrl.getMappedPinnedCellGroupWidths();
+  const [pinnedWidths, setPinnedWidths] = createSignal(pinnedWidthsRef);
 
   // full-width state: signals drive the JSX; the plain mirrors are read back by the compProxy
   // getters/refresh paths, which the core may call mid-flush — before pending signal writes
@@ -99,6 +116,23 @@ const RowComp = (props: RowCompProps) => {
   // managing classes imperatively at the row level was too slow through React's render cycle;
   // the same reasoning holds here — toggleCss stays off the reactive graph
   const cssManager = new CssClassManager(() => eGui);
+
+  const refreshPinnedSections = () => {
+    const widths = rowCtrl.getMappedPinnedCellGroupWidths();
+    const prev = pinnedWidthsRef;
+    if (widths === prev) {
+      return;
+    }
+    pinnedWidthsRef = widths;
+    // a pinned section's width is on the element around its lane; a lane about to unmount takes
+    // a harmless write, one about to mount reads its width as it is created
+    eScrollingCells?.style.setProperty("width", `${widths.centerWidth}px`);
+    ePinnedLeftCells?.parentElement?.style.setProperty("width", `${widths.leftWidth}px`);
+    ePinnedRightCells?.parentElement?.style.setProperty("width", `${widths.rightWidth}px`);
+    if (widths.renderLeft !== prev.renderLeft || widths.renderRight !== prev.renderRight) {
+      setPinnedWidths(widths);
+    }
+  };
 
   // Solid translation of React's `isComponentStateless` refresh split: all Solid comps are
   // functions, so "stateless" collapses to "never registered an imperative refresh handle".
@@ -144,25 +178,44 @@ const RowComp = (props: RowCompProps) => {
 
       toggleCss: (name, on) => cssManager.toggleCss(name, on),
 
-      setDomOrder: (value) => (domOrder = value),
+      // ensureDomOrder is documented as initial, yet rows follow a prop change; investigate
+      // whether to make it truly initial, which would let this go with RowCtrl's listener
+      // (AG-18759).
+      setDomOrder: (value) => {
+        const turnedOn = value && !domOrder;
+        domOrder = value;
+        if (!turnedOn) {
+          return;
+        }
+        // an unchanged lane is not given again, so one shown unordered is put in order here
+        let changed = lanes[0].order();
+        changed = lanes[1].order() || changed;
+        changed = lanes[2].order() || changed;
+        if (changed) {
+          notifyLanes();
+        }
+      },
       setRowIndex: (value) => setAttr("row-index", value),
       setRowId: (value) => setAttr("row-id", value),
       setRowBusinessKey: (value) => setAttr("row-business-key", value),
       setUserStyles: (styles) => _addStylesToElement(eRef, styles),
       // if we don't maintain the order, then cols will be ripped out of and into the dom when
       // cols are reordered, which would stop the CSS transitions from working
-      setCellCtrls: (next, useFlushSync) => {
-        const prevCellCtrls = cellCtrlsRef;
-        const nextCells = getNextValueIfDifferent(prevCellCtrls, next, domOrder);
-        if (nextCells !== prevCellCtrls) {
-          cellCtrlsRef = nextCells;
-          agFlush(useFlushSync, () => setCellCtrls(nextCells));
+      setCellCtrls: (left, center, right, useFlushSync, colsVersion) => {
+        let changed = lanes[0].take(left, colsVersion, domOrder);
+        changed = lanes[1].take(center, colsVersion, domOrder) || changed;
+        changed = lanes[2].take(right, colsVersion, domOrder) || changed;
+        if (changed) {
+          // the changed lanes go in one commit. React's store path skips flushSync
+          // (useSyncExternalStore renders a store change synchronously by itself); Solid has
+          // the one signal path, flushed when the ctrl asks
+          agFlush(useFlushSync, notifyLanes);
         }
       },
       getPinnedLeftRowElement: () => ePinnedLeftCells,
       getScrollingRowElement: () => eScrollingCells,
       getPinnedRightRowElement: () => ePinnedRightCells,
-      refreshPinnedSections: () => setPinnedSectionsVersion((v) => v + 1),
+      refreshPinnedSections,
 
       showFullWidth: (compDetails) => {
         embeddedFullWidthCompDetailsRef = undefined;
@@ -181,14 +234,15 @@ const RowComp = (props: RowCompProps) => {
         setEmbeddedFullWidthCompDetails(compDetails);
       },
       getFullWidthCellRenderers: () => {
+        // one entry per slot, empty where a slot has none — the core skips those
         if (rowCtrl.isEmbeddedFullWidth) {
           return [
             fullWidthEmbeddedLeftComp,
             fullWidthEmbeddedCenterComp,
             fullWidthEmbeddedRightComp,
-          ].filter((r) => r != null);
+          ];
         }
-        return fullWidthComp ? [fullWidthComp] : [];
+        return fullWidthComp ? [fullWidthComp] : undefined;
       },
       getFullWidthCellRendererParams: () => fullWidthParamsRef ?? fullWidthEmbeddedCenterParamsRef,
       getFullWidthCellRendererParamsForPinned: (pinned) =>
@@ -272,11 +326,11 @@ const RowComp = (props: RowCompProps) => {
         return leftRefreshed && centerRefreshed && rightRefreshed;
       },
     };
-    rowCtrl.setComp(compProxy, eRef, containerType, compBean);
+    rowCtrl.setComp(compProxy, eRef, compBean);
   };
 
   onCleanup(() => {
-    rowCtrl.unsetComp(containerType);
+    rowCtrl.unsetComp();
     compBean = context.destroyBean(compBean);
   });
 
@@ -381,9 +435,9 @@ const RowComp = (props: RowCompProps) => {
           const prev = rowCtrl.embeddedSectionHasContent;
           rowCtrl.embeddedSectionHasContent = next;
           if (prev.left !== next.left || prev.center !== next.center || prev.right !== next.right) {
-            // React forces a re-render here so the row re-reads the pinned lane widths; our
-            // widths memo keys on the same version bump refreshPinnedSections uses
-            setPinnedSectionsVersion((v) => v + 1);
+            // React re-renders here so the row re-reads the pinned lane widths; ours are direct
+            // writes, refreshed the way the ctrl refreshes them
+            refreshPinnedSections();
           }
         };
 
@@ -400,45 +454,21 @@ const RowComp = (props: RowCompProps) => {
     );
   }
 
-  const showCells = createMemo(() => !isFullWidth && cellCtrls() != null);
-  // the pinned/scrolling lanes render for normal cell rows AND embedded full-width rows
-  const showLanes = createMemo(() => showCells() || showEmbeddedFullWidth);
+  // the pinned/scrolling lanes render for normal cell rows AND embedded full-width rows; fixed
+  // for the life of the ctrl, like isFullWidth (a lane given no cells yet renders empty)
+  const showLanes = !isFullWidth || showEmbeddedFullWidth;
 
-  const partitionedCellCtrls = createMemo(() => {
-    const left: CellCtrl[] = [];
-    const center: CellCtrl[] = [];
-    const right: CellCtrl[] = [];
-
-    for (const cellCtrl of cellCtrls() ?? []) {
-      const pinned = cellCtrl.column.getPinned();
-      if (pinned === "left") {
-        left.push(cellCtrl);
-      } else if (pinned === "right") {
-        right.push(cellCtrl);
-      } else {
-        center.push(cellCtrl);
-      }
-    }
-
-    return { left, center, right };
-  });
-
-  // React re-reads the widths on every render; the states that trigger those renders are the
-  // refreshPinnedSections bump (also bumped on embedded-lane content changes) and the cell set
-  // changing, so key the memo on both
-  const pinnedWidths = createMemo(() => {
-    pinnedSectionsVersion();
-    cellCtrls();
-    return rowCtrl.getMappedPinnedCellGroupWidths();
-  });
-
-  const cellsJsx = (list: () => CellCtrl[]) => (
-    <For each={list()}>
+  // React asks editSvc.isEditing() once per lane render, so a grid with nothing in edit asks
+  // nothing per cell on every lane re-render. <For> maps a cell only when it is created — a kept
+  // cell is never asked again — and isEditing returns at once with nothing in edit, so there is
+  // no per-render cost for that gate to save; the options object is shared, as upstream's is.
+  const cellsJsx = (lane: 0 | 1 | 2) => (
+    <For each={laneCells()[lane]}>
       {(cellCtrl) => (
         <CellComp
           cellCtrl={cellCtrl}
           context={context}
-          editingCell={editSvc?.isEditing(cellCtrl, { withOpenEditor: true }) ?? false}
+          editingCell={editSvc?.isEditing(cellCtrl, WITH_OPEN_EDITOR) ?? false}
           printLayout={rowCtrl.printLayout}
         />
       )}
@@ -504,28 +534,29 @@ const RowComp = (props: RowCompProps) => {
           unmount; Solid refs don't re-run) — the core reads them for embedded full-width
           targets and pinned-section hit-testing, and a stale detached element would be used.
           Show function children give a scope to register the branch cleanups in. */}
-      <Show when={showLanes()}>
+      <Show when={showLanes}>
         {(_lanes) => {
           onCleanup(() => (eScrollingCells = undefined));
+          // lane widths are seeded as each lane mounts; refreshPinnedSections writes the rest
+          const { centerWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
           return (
             <>
               <Show when={pinnedWidths().renderLeft}>
                 {(_left) => {
                   onCleanup(() => (ePinnedLeftCells = undefined));
+                  const { leftWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
                   return (
                     <div
                       class="ag-grid-pinned-left-cells"
                       role="presentation"
-                      style={{ width: `${pinnedWidths().leftWidth}px` }}
+                      style={{ width: `${leftWidth}px` }}
                     >
                       <div
                         class="ag-grid-container-wrapper"
                         role="presentation"
                         ref={(el) => (ePinnedLeftCells = el)}
                       >
-                        {showEmbeddedFullWidth
-                          ? embeddedSectionJsx("left")
-                          : cellsJsx(() => partitionedCellCtrls().left)}
+                        {showEmbeddedFullWidth ? embeddedSectionJsx("left") : cellsJsx(0)}
                       </div>
                     </div>
                   );
@@ -535,29 +566,26 @@ const RowComp = (props: RowCompProps) => {
                 class="ag-grid-scrolling-cells"
                 role="presentation"
                 ref={(el) => (eScrollingCells = el)}
-                style={{ width: `${pinnedWidths().centerWidth}px` }}
+                style={{ width: `${centerWidth}px` }}
               >
-                {showEmbeddedFullWidth
-                  ? embeddedSectionJsx("center")
-                  : cellsJsx(() => partitionedCellCtrls().center)}
+                {showEmbeddedFullWidth ? embeddedSectionJsx("center") : cellsJsx(1)}
               </div>
               <Show when={pinnedWidths().renderRight}>
                 {(_right) => {
                   onCleanup(() => (ePinnedRightCells = undefined));
+                  const { rightWidth } = rowCtrl.getMappedPinnedCellGroupWidths();
                   return (
                     <div
                       class="ag-grid-pinned-right-cells"
                       role="presentation"
-                      style={{ width: `${pinnedWidths().rightWidth}px` }}
+                      style={{ width: `${rightWidth}px` }}
                     >
                       <div
                         class="ag-grid-container-wrapper"
                         role="presentation"
                         ref={(el) => (ePinnedRightCells = el)}
                       >
-                        {showEmbeddedFullWidth
-                          ? embeddedSectionJsx("right")
-                          : cellsJsx(() => partitionedCellCtrls().right)}
+                        {showEmbeddedFullWidth ? embeddedSectionJsx("right") : cellsJsx(2)}
                       </div>
                     </div>
                   );
@@ -568,7 +596,11 @@ const RowComp = (props: RowCompProps) => {
         }}
       </Show>
       <Show when={isFullWidth && !showEmbeddedFullWidth}>
-        <div class="ag-full-width-anchor" role="presentation" ref={(el) => (eFullWidthAnchor = el)}>
+        <div
+          class="ag-full-width-anchor"
+          role={fullWidthAnchorRole}
+          ref={(el) => (eFullWidthAnchor = el)}
+        >
           {fullWidthFrameworkJsx()}
         </div>
       </Show>
@@ -577,3 +609,53 @@ const RowComp = (props: RowCompProps) => {
 };
 
 export default RowComp;
+
+/**
+ * One lane of a row's cells: the list the row last gave and the list shown. React's CellLane also
+ * carries the lane's store (subscribe / pending / notify) for its per-lane components; here the
+ * row's lane signal is the store (see notifyLanes in RowComp).
+ */
+class CellLane {
+  /** The list the row last gave, and the columns version it was laid out at. */
+  private given: CellCtrl[] | undefined = undefined;
+  private colsVersion = -1;
+  /** The list shown. */
+  public cells: CellCtrl[] | undefined;
+
+  public constructor(cells: CellCtrl[] | undefined) {
+    this.cells = cells;
+  }
+
+  public take(next: CellCtrl[], colsVersion: number, domOrder: boolean): boolean {
+    const given = this.given;
+    if (next === given) {
+      return false;
+    }
+    const prev = this.cells;
+    // showing the row's own list, laid out at the same columns: `next` already keeps its cells
+    // in order
+    const cells =
+      prev === given && colsVersion === this.colsVersion
+        ? next
+        : getNextValueIfDifferent(prev, next, domOrder, true);
+    this.given = next;
+    this.colsVersion = colsVersion;
+    if (cells === prev) {
+      return false;
+    }
+    this.cells = cells;
+    return true;
+  }
+
+  /** Shows the list the row last gave, which keeps its cells in column order. */
+  public order(): boolean {
+    const given = this.given;
+    if (given === undefined || this.cells === given) {
+      return false;
+    }
+    this.cells = given;
+    return true;
+  }
+}
+
+const WITH_OPEN_EDITOR = { withOpenEditor: true };

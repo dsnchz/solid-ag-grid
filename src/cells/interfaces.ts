@@ -5,7 +5,7 @@ import type { CellEditorComponentProxy } from "../customComp/cellEditorComponent
 export type RenderDetails = {
   compDetails: UserCompDetails | undefined;
   value?: any;
-  force?: boolean;
+  force: boolean;
 };
 
 export type EditDetails = {

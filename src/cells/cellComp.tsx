@@ -82,7 +82,7 @@ const CellComp = (props: CellCompProps) => {
   const [value, setValue] = createSignal<unknown>(
     hasRenderer ? undefined : cellCtrl.getValueToDisplay(),
   );
-  const [force, setForce] = createSignal<boolean | undefined>(false);
+  const [force, setForce] = createSignal<boolean>(false);
   const hasDetails = () => compDetails() !== undefined;
   const [editDetails, setEditDetails] = createSignal<EditDetails | undefined>();
   const [renderKey, setRenderKey] = createSignal<number>(1);
@@ -94,9 +94,9 @@ const CellComp = (props: CellCompProps) => {
   const [includeRowDrag, setIncludeRowDrag] = createSignal<boolean>(false);
   const [includeDndSource, setIncludeDndSource] = createSignal<boolean>(false);
 
-  // internal bridge signal: the JS-editor effect's cleanup clears it via AgPromise.then, which
-  // resolves SYNCHRONOUSLY on an already-settled promise — at disposal that is an owned scope,
-  // where writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev (§7.3a) — opt in narrowly
+  // internal bridge signal: the JS-editor effect's cleanup clears it — at disposal that is an
+  // owned scope, where writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev (§7.3a) — opt in
+  // narrowly
   const [jsEditorComp, setJsEditorComp] = createSignal<ICellEditorComp | undefined>(undefined, {
     ownedWrite: true,
   });
@@ -104,7 +104,8 @@ const CellComp = (props: CellCompProps) => {
   const forceWrapper = cellCtrl.isForceWrapper();
   const cellAriaRole = cellCtrl.getCellAriaRole() as JSX.AriaAttributes["role"];
   const cellValueClass = cellCtrl.getCellValueClass();
-  const isSpanning = cellCtrl.isCellSpanning();
+  // a readonly ctrl field fixed at construction (vanilla/React 36.3 test `cellSpan !== null`)
+  const isSpanning = cellCtrl.cellSpan !== null;
 
   let eGui: HTMLDivElement | undefined;
   let eWrapper: HTMLDivElement | undefined;
@@ -164,15 +165,17 @@ const CellComp = (props: CellCompProps) => {
         // which also matches the vanilla comp's post-creation evaluation order.
         // the edit session may already be over by this turn (stopEditing in the same tick,
         // grid destroyed) — the core's tooltip/attached paths then dereference torn-down beans
+        // (React 36.3 adds the same alive/destroyed guard)
         if (cellEditorRef !== cellEditor || !cellCtrl.isAlive() || context.isDestroyed()) {
           return;
         }
         const editingCancelledByUserComp = cellEditor.isCancelBeforeStart?.();
         if (editingCancelledByUserComp) {
           cellCtrl.stopEditing(true);
-          cellCtrl.focusCell(true);
+          cellCtrl.focusCell({ forceBrowserFocus: true });
         } else {
-          cellCtrl.cellEditorAttached();
+          // the grid Context prop stands in for React's BeansContext read (per-cell diet)
+          context.getBean("editSvc")?.onEditorAttached(cellCtrl);
           cellCtrl.enableEditorTooltipFeature(cellEditor);
         }
       });
@@ -202,6 +205,8 @@ const CellComp = (props: CellCompProps) => {
         compDetails,
         force,
         suppress: suppressJsRenderer,
+        // a torn-down renderer's setTooltip registration must not outlive it
+        onRendererDestroyed: () => cellCtrl.resetCellRendererTooltip(),
       });
       // bridge (cleanup-free: an effect callback may only return a function or undefined)
       createEffect(
@@ -261,8 +266,17 @@ const CellComp = (props: CellCompProps) => {
           ensureJsRenderer();
         }
         const setDetails = () => {
-          // three writes, one flush; each signal's `===` equality skips the unchanged parts
-          setCompDetails(compDetails ?? null);
+          // three writes, one flush; each signal's `===` equality skips the unchanged parts.
+          // The updater's `prev` is the latest WRITTEN compDetails (pending writes included),
+          // like React's setState updater: removing or replacing a renderer drops the outgoing
+          // one's setTooltip registration so the column default applies again
+          setCompDetails((prev) => {
+            const next = compDetails ?? null;
+            if (prev != null && (next == null || prev.componentClass !== next.componentClass)) {
+              cellCtrl.resetCellRendererTooltip();
+            }
+            return next;
+          });
           setValue(() => value);
           setForce(force);
         };
@@ -300,7 +314,7 @@ const CellComp = (props: CellCompProps) => {
                 setEditorParamsVersion((prev) => prev + 1),
               );
             } else {
-              warnReactiveCustomComponents();
+              warnReactiveCustomComponents(context.getId());
             }
           }
           // start editing
@@ -331,7 +345,8 @@ const CellComp = (props: CellCompProps) => {
         if (!eGui) {
           return;
         }
-        cssManager.toggleCss("ag-cell-value", !untrack(showCellWrapper));
+        // no ag-cell-value write (React 36.3 dropped it; vanilla's refreshEditStyles never
+        // had it): the wrapper <Show> branch and init() own that class
         cssManager.toggleCss("ag-cell-inline-editing", !!editing && !isPopup);
         cssManager.toggleCss("ag-cell-popup-editing", !!editing && !!isPopup);
         cssManager.toggleCss("ag-cell-not-inline-editing", !editing || !!isPopup);
@@ -425,10 +440,12 @@ const CellComp = (props: CellCompProps) => {
                 return;
               }
               const result = cellRendererRef.refresh(compDetails.params);
-              if (result != true) {
+              if (result !== true) {
                 // increasing the render key forces a remount (undocumented
                 // refresh()-returns-false contract kept for GroupCellRenderer parity — see the
-                // React source)
+                // React source); the remounted instance starts without the outgoing one's
+                // setTooltip registration
+                cellCtrl.resetCellRendererTooltip();
                 setRenderKey((prev) => prev + 1);
               }
             },
@@ -503,8 +520,16 @@ const CellComp = (props: CellCompProps) => {
               const isPopup = details.popup === true;
 
               const cellEditorPromise = compDetails.newAgStackInstance();
+              // an editor resolving after the branch is disposed (edit session over, newer
+              // session, unmount) is destroyed unshown, leaving any newer one alone
+              let destroyed = false;
+              let shownEditor: ICellEditorComp | undefined;
 
               cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+                if (destroyed) {
+                  context.destroyBean(cellEditor);
+                  return;
+                }
                 if (!cellEditor) {
                   return;
                 }
@@ -512,6 +537,7 @@ const CellComp = (props: CellCompProps) => {
                 const compGui = cellEditor.getGui();
 
                 setCellEditorRef(cellEditor);
+                shownEditor = cellEditor;
 
                 if (!isPopup) {
                   const parentEl = forceWrapper ? eCellWrapper : eGui;
@@ -524,17 +550,18 @@ const CellComp = (props: CellCompProps) => {
               });
 
               return () => {
-                // AgPromise.then resolves synchronously on a settled promise, so this body runs
-                // inline here — including at disposal, which is why jsEditorComp has ownedWrite
-                cellEditorPromise.then((cellEditor: ICellEditorComp) => {
-                  const compGui = cellEditor.getGui();
-                  cellCtrl.disableEditorTooltipFeature();
-                  context.destroyBean(cellEditor);
-                  setCellEditorRef(undefined);
-                  setJsEditorComp(undefined);
+                // runs at branch disposal — which is why jsEditorComp has ownedWrite
+                destroyed = true;
+                if (!shownEditor) {
+                  return;
+                }
+                const compGui = shownEditor.getGui();
+                cellCtrl.disableEditorTooltipFeature();
+                context.destroyBean(shownEditor);
+                setCellEditorRef(undefined);
+                setJsEditorComp(undefined);
 
-                  compGui?.remove();
-                });
+                compGui?.remove();
               };
             },
           );

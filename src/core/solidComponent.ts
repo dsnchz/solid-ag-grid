@@ -84,6 +84,17 @@ export class SolidComponent implements IComponent<any>, WrappableInterface {
 
     eParentElement.classList.add("ag-solid-container");
 
+    // AG Grid theme hook classes, not React coupling: core CSS (ag-stack _root.css) keys its
+    // custom-comp wrapper rules on React-named classes — `:where(.ag-toolbar) .ag-react-container
+    // :where(:not(.ag-react-wrapper-block)) { display: contents }` flattens the wrapper so toolbar
+    // items fill the flex container (AG-17878). Our wrapper has the same role as React's, so it
+    // carries the same hooks to receive identical theme styling; `requiresBlockWrapper` types
+    // (tooltip, drag image — the grid positions/measures the wrapper itself) opt out as upstream.
+    eParentElement.classList.add("ag-react-container");
+    if (this.componentType.requiresBlockWrapper) {
+      eParentElement.classList.add("ag-react-wrapper-block");
+    }
+
     return eParentElement;
   }
 

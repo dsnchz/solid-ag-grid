@@ -6,6 +6,7 @@ import type {
   VerticalSectionMap,
 } from "ag-grid-community";
 import {
+  _getLayoutCssClass,
   _isCellSelectionEnabled,
   _isMultiRowSelection,
   FakeHScrollComp,
@@ -41,14 +42,16 @@ const GridBodyComp = () => {
   const [stickyBottomWidth, setStickyBottomWidth] = createSignal<string>("100%");
   const [cellSelectableCss, setCellSelectableCss] = createSignal<string | null>(null);
   const [preventRowAnimationClass, setPreventRowAnimationClass] = createSignal<string | null>(null);
+  const [pinnedColumnsOverflowing, setPinnedColumnsOverflowing] = createSignal(false);
 
-  // we initialise layoutClass to 'ag-layout-normal', because if we don't, the comp will initially
-  // render with no width (as ag-layout-normal sets width to 0, which is needed for flex) which
-  // gives the grid a massive width, which then renders a massive amount of columns. this problem
-  // is due to Solid 2.0 rendering async (microtask batching), same as React — for the non-async
-  // version (ie when not using a framework) this is not a problem as the UI will finish
-  // initialising before we set data.
-  const [layoutClass, setLayoutClass] = createSignal<string>("ag-layout-normal");
+  // the first render commits before GridBodyCtrl's LayoutFeature runs (setComp waits for
+  // onSettled below), so it must already carry the layout constraints (flex width, auto-height
+  // cap) or every column / row gets rendered. Solid 2.0 renders async (microtask batching), same
+  // as React — for the non-async version (ie when not using a framework) this is not a problem
+  // as the UI will finish initialising before we set data.
+  const [layoutClass, setLayoutClass] = createSignal<string>(
+    _getLayoutCssClass(gos.get("domLayout")),
+  );
 
   let eRoot: HTMLDivElement | undefined;
   let eTop: HTMLDivElement | undefined;
@@ -151,6 +154,7 @@ const GridBodyComp = () => {
           eGridScrollableArea.style.width = width;
         }
       },
+      setPinnedColumnsOverflowing,
       setStickyBottomHeight,
       setStickyBottomWidth,
       setGridRole: (role: "grid" | "treegrid") => _setAriaRole(eGridViewportEl, role),
@@ -173,7 +177,13 @@ const GridBodyComp = () => {
   });
 
   const rootClasses = createMemo(() => classesList("ag-root", "ag-unselectable", layoutClass()));
-  const gridViewportClasses = createMemo(() => classesList("ag-grid-viewport", layoutClass()));
+  const gridViewportClasses = createMemo(() =>
+    classesList(
+      "ag-grid-viewport",
+      layoutClass(),
+      pinnedColumnsOverflowing() ? "ag-pinned-columns-overflow" : null,
+    ),
+  );
   const bodyClasses = createMemo(() =>
     classesList("ag-grid-scrolling-rows", layoutClass(), cellSelectableCss()),
   );
@@ -201,25 +211,27 @@ const GridBodyComp = () => {
     classesList(rowAnimationClass(), preventRowAnimationClass()),
   );
 
+  // the pinned-row heights live on the viewport, where the core auto-height cap (_grid-layout.css)
+  // reads them alongside the --ag-internal-header-rows-height GridHeaderCtrl sets there itself
+  const gridViewportStyle = createMemo<JSX.CSSProperties>(() => ({
+    "--ag-internal-top-rows-height": `${pinnedSections().top.height}px`,
+    "--ag-internal-bottom-rows-height": `${pinnedSections().bottom.height}px`,
+  }));
+
   const topStyle = createMemo<JSX.CSSProperties>(() => {
-    const topRowsHeight = `${pinnedSections().top.height}px`;
-    const topSectionHeight = `calc(var(--ag-header-rows-height, 0px) + ${topRowsHeight})`;
+    const topRowsHeight = pinnedSections().top.height;
+    const topSectionHeight = `calc(var(--ag-internal-header-rows-height, 0px) + ${topRowsHeight}px)`;
     return {
-      "--ag-top-rows-height": topRowsHeight,
       "min-height": topSectionHeight,
       height: topSectionHeight,
-    } as JSX.CSSProperties;
+    };
   });
 
-  const bottomStyle = createMemo<JSX.CSSProperties>(
-    () =>
-      ({
-        "--ag-bottom-rows-height": `${pinnedSections().bottom.height}px`,
-        height: `calc(${pinnedSections().bottom.height}px + ${stickyBottomHeight()})`,
-        "min-height": `calc(${pinnedSections().bottom.height}px + ${stickyBottomHeight()})`,
-        width: stickyBottomWidth(),
-      }) as JSX.CSSProperties,
-  );
+  const bottomStyle = createMemo<JSX.CSSProperties>(() => ({
+    height: `calc(${pinnedSections().bottom.height}px + ${stickyBottomHeight()})`,
+    "min-height": `calc(${pinnedSections().bottom.height}px + ${stickyBottomHeight()})`,
+    width: stickyBottomWidth(),
+  }));
 
   return (
     <div ref={eRoot} class={rootClasses()} role="presentation">
@@ -230,6 +242,7 @@ const GridBodyComp = () => {
         }}
         class={gridViewportClasses()}
         role="presentation"
+        style={gridViewportStyle()}
       >
         <div ref={eGridScrollableArea} class={scrollableClasses()} role="rowgroup">
           <div
@@ -242,7 +255,7 @@ const GridBodyComp = () => {
             style={topStyle()}
           >
             {topElement() && gridViewportElement() ? (
-              <GridHeaderComp eTopSection={topElement()!} eGridViewport={gridViewportElement()!} />
+              <GridHeaderComp eGridViewport={gridViewportElement()!} />
             ) : null}
             <div ref={eTopExtraRows} class="ag-extra-rows-container" role="presentation" />
             {gridViewportElement() ? (

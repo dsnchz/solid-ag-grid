@@ -10,6 +10,9 @@ export type JsCellRendererOptions = {
   force: Accessor<boolean | undefined>;
   /** true while an inline (non-popup) editor is active — the renderer is torn down (T3.8) */
   suppress?: Accessor<boolean>;
+  /** called after a live renderer is torn down while the cell lives on (never at final
+   * disposal) — CellComp drops the outgoing renderer's `setTooltip` registration */
+  onRendererDestroyed?: () => void;
 };
 
 export type JsCellRenderer = {
@@ -32,17 +35,27 @@ export type JsCellRenderer = {
  * The effect owns only the instance lifecycle (create / refresh-else-recreate / destroy).
  */
 export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRenderer => {
-  const { context, compDetails: compDetailsAccessor, force, suppress } = options;
+  const {
+    context,
+    compDetails: compDetailsAccessor,
+    force,
+    suppress,
+    onRendererDestroyed,
+  } = options;
 
   let comp: ICellRendererComp | undefined;
-  // bumped on every create/destroy so a stale async newAgStackInstance resolution is discarded
-  // (§7 async caution: once-only work needs an idempotence guard)
+  // bumped on every create/destroy so a stale async newAgStackInstance resolution is destroyed
+  // unshown (§7 async caution: once-only work needs an idempotence guard). Covers React 36.3's
+  // per-run `stale` flag: while an instance is pending `comp` is unset, so every re-apply of the
+  // effect below either destroys or creates (both bump), and final disposal bumps too
   let compVersion = 0;
   // internal bridge signal: destroyCellRenderer runs from onCleanup (disposal is an owned
   // scope, where writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
   const [gui, setGui] = createSignal<HTMLElement | undefined>(undefined, { ownedWrite: true });
 
-  const destroyCellRenderer = () => {
+  // resetTooltip=false only for final disposal: the cell's tooltip feature dies with it (React
+  // 36.3 `destroyCellRenderer(false)`, vanilla `destroyRenderer(false)` in CellComp.destroy)
+  const destroyCellRenderer = (resetTooltip = true) => {
     compVersion++;
     if (!comp) {
       return;
@@ -53,6 +66,10 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
     context.destroyBean(comp);
     comp = undefined;
     setGui(undefined);
+
+    if (resetTooltip) {
+      onRendererDestroyed?.();
+    }
   };
 
   // create or refresh the JS cell renderer.
@@ -69,9 +86,12 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
       const jsCompDetails = compDetails != null && !compDetails.componentFromFramework;
       const showComp = jsCompDetails && !suppressed;
 
-      // if not showing the comp, destroy any existing one and return
+      // if not showing the comp, destroy any existing one and return. A Solid renderer taking
+      // over has already mounted (its <Show> branch renders before this effect applies) and may
+      // have registered its own tooltip; CellComp reset the outgoing registration when it wrote
+      // the new compDetails, so this teardown must not reset again and clear the successor's
       if (!showComp) {
-        destroyCellRenderer();
+        destroyCellRenderer(compDetails?.componentFromFramework !== true);
         return;
       }
 
@@ -95,6 +115,7 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
         if (!newComp) {
           return;
         }
+        // a newer request or the unmount came first, so this renderer has no cell to go in
         if (version !== compVersion || context.isDestroyed()) {
           context.destroyBean(newComp);
           return;
@@ -102,14 +123,14 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
         comp = newComp;
         setGui(newComp.getGui() ?? undefined);
       });
-      // We do NOT return a destroy cleanup from this apply — the instance must survive
-      // re-applies so the refresh-else-recreate path above can run against it (same subtlety
-      // as React's "do not return the destroy here").
+      // No cleanup is returned from this apply — the live instance must survive re-applies so
+      // the refresh-else-recreate path above can run against it. React 36.3's cleanup only marks
+      // a pending instance stale, which the compVersion bump already does.
     },
   );
 
   // final disposal only — the update effect above deliberately keeps the comp alive
-  onCleanup(destroyCellRenderer);
+  onCleanup(() => destroyCellRenderer(false));
 
   return { gui, instance: () => comp };
 };

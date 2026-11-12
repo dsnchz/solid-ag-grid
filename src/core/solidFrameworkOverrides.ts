@@ -13,7 +13,7 @@ export class SolidFrameworkOverrides extends VanillaFrameworkOverrides {
   private queueUpdates = false;
   // RENDERING-ENGINE CAST VERDICT (T3.11): 'solid' is not in the core's declared union
   // ('vanilla' | 'react'), so both the field and the constructor arg carry casts. Audited
-  // ag-grid-community 36.0.1: `renderingEngine` has ZERO runtime readers (its only occurrence
+  // ag-grid-community 36.0.1, re-audited 36.3.0: `renderingEngine` has ZERO runtime readers (its only occurrence
   // is the base-class assignment); its known external consumer is AG Charts integration, whose
   // `=== 'react'` check correctly evaluates false for 'solid' and falls back to non-React chart
   // rendering. The constructor's frameworkName feeds exactly two things — `baseDocLink =

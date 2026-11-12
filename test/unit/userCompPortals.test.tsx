@@ -16,7 +16,7 @@ import { CustomComponentWrapper } from "../../src/customComp/customComponentWrap
 import { CustomContext } from "../../src/customComp/customContext";
 import { getInstance } from "../../src/customComp/util";
 
-const cellRendererType: ComponentType = { name: "cellRenderer", cellRenderer: true };
+const cellRendererType: ComponentType = { name: "cellRenderer", supportsJsFunction: true };
 const overlayType: ComponentType = { name: "loadingOverlayComponent" };
 
 const waitFor = async (cond: () => boolean, timeoutMs = 3000): Promise<void> => {
@@ -55,6 +55,9 @@ describe("SolidComponent portals (jsdom)", () => {
     const eGui = comp.getGui();
     expect(eGui.tagName).toBe("DIV");
     expect(eGui.classList.contains("ag-solid-container")).toBe(true);
+    // AG Grid theme hook class (core CSS keys wrapper rules on it); no block opt-out by default
+    expect(eGui.classList.contains("ag-react-container")).toBe(true);
+    expect(eGui.classList.contains("ag-react-wrapper-block")).toBe(false);
     expect(eGui.textContent).toBe("value=42");
     // getRootElement skips the Portal marker text nodes
     expect(comp.getRootElement().className).toBe("my-comp");
@@ -69,6 +72,18 @@ describe("SolidComponent portals (jsdom)", () => {
     const comp = new SolidComponent(() => <b>x</b>, portalManager, cellRendererType);
     await agPromiseToPromise(comp.init({}));
     expect(comp.getGui().tagName).toBe("SPAN");
+    comp.destroy();
+  });
+
+  it("requiresBlockWrapper types opt out of the theme's toolbar display:contents flattening", async () => {
+    const portalManager = new PortalManager();
+    mountPortalHost(portalManager);
+
+    const tooltipType: ComponentType = { name: "tooltipComponent", requiresBlockWrapper: true };
+    const comp = new SolidComponent(() => <b>tip</b>, portalManager, tooltipType);
+    await agPromiseToPromise(comp.init({}));
+    expect(comp.getGui().classList.contains("ag-react-container")).toBe(true);
+    expect(comp.getGui().classList.contains("ag-react-wrapper-block")).toBe(true);
     comp.destroy();
   });
 

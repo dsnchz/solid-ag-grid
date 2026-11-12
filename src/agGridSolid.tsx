@@ -78,8 +78,21 @@ export interface AgGridSolidProps<TData = any> extends GridOptions<TData> {
   ref?: (ref: AgGridSolidRef<TData>) => void;
 }
 
+/**
+ * {@link AgGridSolidProps} plus wrapper-internal plumbing — port of ag-grid-react's
+ * `InternalAgGridReactProps`. Never part of the public API (not exported from the package
+ * index); only framework-internal renderers that nest a grid render {@link AgGridSolidUi}.
+ */
+export interface InternalAgGridSolidProps<TData = any> extends AgGridSolidProps<TData> {
+  /**
+   * Internal flag set when this grid is nested inside another grid's styled root (e.g. a
+   * master/detail detail grid), so its own styled root should not re-apply theme classes.
+   */
+  hasAncestorStyledRoot?: boolean;
+}
+
 // Used to only pass gridOptions to the GridCoreCreator from the props
-type SolidCompProps = Omit<AgGridSolidProps, keyof GridOptions>;
+type SolidCompProps = Omit<InternalAgGridSolidProps, keyof GridOptions>;
 const solidPropsNotGridOptions: SolidCompProps = {
   gridOptions: undefined,
   modules: undefined,
@@ -88,6 +101,7 @@ const solidPropsNotGridOptions: SolidCompProps = {
   componentWrappingElement: undefined,
   rowStore: undefined,
   ref: undefined,
+  hasAncestorStyledRoot: undefined,
 };
 const excludeSolidCompProps = new Set(Object.keys(solidPropsNotGridOptions));
 
@@ -99,16 +113,12 @@ const isStoreProxy = (value: unknown): boolean =>
   (value as { readonly [key: symbol]: unknown })[$PROXY] !== undefined;
 
 /**
- * AG Grid with 100% SolidJS rendering: every header, row and cell is a Solid component, on the
- * same architecture as `ag-grid-react`. Pass AG Grid options as props; the grid boots once the
- * component settles and reacts to prop changes per option thereafter.
- *
- * @example
- * ```tsx
- * <AgGridSolid rowData={rows()} columnDefs={columns} ref={(r) => (api = r.api)} />
- * ```
+ * The grid component typed with the internal props — port of ag-grid-react's `AgGridReactUi`.
+ * Rendered directly only by framework-internal renderers that nest a grid (DetailCellRenderer
+ * passes `hasAncestorStyledRoot`); {@link AgGridSolid} is this same component typed with the
+ * public props.
  */
-export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element => {
+export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): JSX.Element => {
   let eOutermost!: HTMLDivElement;
   let eInnermost!: HTMLDivElement;
 
@@ -258,6 +268,8 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element
       gridOptions: gridOptionsHolder.gridOptions,
       portalManager,
       frameworkOverrides,
+      // grid configuration fixed for the grid's lifetime, read once at boot (like `modules`)
+      hasAncestorStyledRoot: props.hasAncestorStyledRoot,
       drainAndMarkReady: readyQueue.drainAndMarkReady,
       addDestroyFunc: (func) => destroyFuncs.push(func),
       setContext,
@@ -300,15 +312,19 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element
     // compute: read every grid-option prop key so each one is tracked, and return the snapshot.
     // Not-ready async keys are omitted per-key (Open question 9 verdict — see
     // src/core/asyncProps.ts): the tracked read already subscribed this compute, so it re-runs
-    // — and the key diffs in — on resolve.
-    () => snapshotGridProps(props, excludeProps),
+    // — and the key diffs in — on resolve. `keys` is the props object's own key list (one
+    // Object.keys, already tracked by the snapshot's) — pending keys included.
+    () => ({ values: snapshotGridProps(props, excludeProps), keys: Object.keys(props) }),
     // apply: diff against the previous snapshot and route the changes through the ready queue
-    (nextProps, prevProps) => {
-      if (!prevProps) {
+    (next, prev) => {
+      if (!prev) {
         // first run: initial props were already handed to GridCoreCreator
         return;
       }
-      const changes = extractGridPropertyChanges(prevProps, nextProps);
+      // omitted ≠ dropped: a key missing from `values` but still in `keys` is pending async and
+      // keeps its value (SWR); a key gone from `keys` was removed from props, and only then does
+      // an event handler clear to undefined (ag-grid-react's dropped-handler rule)
+      const changes = extractGridPropertyChanges(prev.values, next.values, prev.keys, next.keys);
       if (Object.keys(changes).length === 0) {
         return;
       }
@@ -338,5 +354,17 @@ export const AgGridSolid = <TData,>(props: AgGridSolidProps<TData>): JSX.Element
     </div>
   );
 };
+
+/**
+ * AG Grid with 100% SolidJS rendering: every header, row and cell is a Solid component, on the
+ * same architecture as `ag-grid-react`. Pass AG Grid options as props; the grid boots once the
+ * component settles and reacts to prop changes per option thereafter.
+ *
+ * @example
+ * ```tsx
+ * <AgGridSolid rowData={rows()} columnDefs={columns} ref={(r) => (api = r.api)} />
+ * ```
+ */
+export const AgGridSolid: <TData>(props: AgGridSolidProps<TData>) => JSX.Element = AgGridSolidUi;
 
 export default AgGridSolid;

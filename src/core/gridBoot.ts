@@ -29,6 +29,11 @@ export type GridBootParams<TData> = {
   readonly gridOptions: GridOptions<TData> | undefined;
   readonly portalManager: PortalManager;
   readonly frameworkOverrides: SolidFrameworkOverrides;
+  /**
+   * Set when this grid is nested inside another grid's styled root (the master/detail detail
+   * grid), so its own styled root does not re-apply theme classes.
+   */
+  readonly hasAncestorStyledRoot: boolean | undefined;
   /** ReadyQueue hook wired to the grid core's accept-changes whenReady slot. */
   readonly drainAndMarkReady: () => void;
   /** Registers teardown work with the component's onCleanup-driven destroy list. */
@@ -50,6 +55,7 @@ export const bootGrid = <TData>(params: GridBootParams<TData>): GridApi<TData> =
     gridOptions,
     portalManager,
     frameworkOverrides,
+    hasAncestorStyledRoot,
     drainAndMarkReady,
     addDestroyFunc,
     setContext,
@@ -81,6 +87,7 @@ export const bootGrid = <TData>(params: GridBootParams<TData>): GridApi<TData> =
     },
     modules,
     frameworkOverrides,
+    hasAncestorStyledRoot,
   };
 
   const createUiCallback = (ctx: Context) => {

@@ -5,7 +5,7 @@ import type {
   IStatusPanel,
   IToolPanel,
 } from "ag-grid-community";
-import { _warn, AgPromise } from "ag-grid-community";
+import { _warnForGrid, AgPromise } from "ag-grid-community";
 
 /**
  * Function to retrieve the Solid component from an instance returned by the grid.
@@ -30,8 +30,9 @@ export function getInstance<
 
 /**
  * Logs the grid's warning that a custom Solid component needs `reactiveCustomComponents`
- * enabled (AG Grid warning #231). Exported for parity with ag-grid-react.
+ * enabled (AG Grid warning #231), attributed to the grid `gridId`. Exported for parity with
+ * ag-grid-react.
  */
-export function warnReactiveCustomComponents(): void {
-  _warn(231);
+export function warnReactiveCustomComponents(gridId: string): void {
+  _warnForGrid(gridId, 231);
 }

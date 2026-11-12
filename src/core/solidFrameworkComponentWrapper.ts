@@ -7,6 +7,7 @@ import type {
 import { _getGridOption, BaseComponentWrapper } from "ag-grid-community";
 
 import { CellRendererComponentWrapper } from "../customComp/cellRendererComponentWrapper";
+import { ColumnSelectionLabelRendererComponentWrapper } from "../customComp/columnSelectionLabelRendererComponentWrapper";
 import { CustomOverlayComponentWrapper } from "../customComp/customOverlayComponentWrapper";
 import { DateComponentWrapper } from "../customComp/dateComponentWrapper";
 import { DragAndDropImageComponentWrapper } from "../customComp/dragAndDropImageComponentWrapper";
@@ -64,6 +65,7 @@ export class SolidFrameworkComponentWrapper
             return DragAndDropImageComponentWrapper;
           case "loadingOverlayComponent":
           case "noRowsOverlayComponent":
+          case "overlayComponent":
           case "activeOverlay":
             return CustomOverlayComponentWrapper;
           case "statusPanel":
@@ -74,6 +76,8 @@ export class SolidFrameworkComponentWrapper
             return MenuItemComponentWrapper;
           case "cellRenderer":
             return CellRendererComponentWrapper;
+          case "columnLabelRenderer":
+            return ColumnSelectionLabelRendererComponentWrapper;
           case "innerHeaderComponent":
             return InnerHeaderComponentWrapper;
           default:
@@ -92,18 +96,21 @@ export class SolidFrameworkComponentWrapper
         case "dragAndDropImageComponent":
         case "loadingOverlayComponent":
         case "noRowsOverlayComponent":
+        case "overlayComponent":
         case "activeOverlay":
         case "statusPanel":
         case "toolPanel":
         case "menuItem":
         case "cellRenderer":
-          warnReactiveCustomComponents();
+        case "columnLabelRenderer":
+          // Grid ID is always set at this point (UserComponentFactory calls setGridId on wire)
+          warnReactiveCustomComponents(this.gridId!);
           break;
       }
     }
-    // only cell renderers and tool panel should use fallback methods
+    // only renderers supporting JavaScript functions and tool panels should use fallback methods
     const suppressFallbackMethods =
-      !componentType.cellRenderer && componentType.name !== "toolPanel";
+      !componentType.supportsJsFunction && componentType.name !== "toolPanel";
     return new SolidComponent(userComponent, this.parent, componentType, suppressFallbackMethods);
   }
 }

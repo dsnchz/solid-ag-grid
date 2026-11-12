@@ -8,13 +8,12 @@ import {
   _getGridRegisteredModules,
   _isClientSideRowModel,
   _isServerSideRowModel,
-  _warn,
 } from "ag-grid-community";
 import { _observeResize, CssClassManager } from "ag-stack";
 import { createMemo, createSignal, onCleanup, Show, untrack, useContext } from "solid-js";
 
 import type { AgGridSolidRef } from "../agGridSolid";
-import AgGridSolid from "../agGridSolid";
+import { AgGridSolidUi } from "../agGridSolid";
 import { BeansContext } from "../core/beansContext";
 import { CssClasses } from "../core/utils";
 
@@ -28,7 +27,9 @@ type DetailCellRendererProps = IDetailCellRendererParams & {
  * circular-import hazard here because nothing in this module executes at import time).
  * Drives an `IDetailCellRendererCtrl` created via
  * `registry.createDynamicBean('detailCellRendererCtrl')` (enterprise SharedMasterDetail) and
- * renders the detail grid as a nested `<AgGridSolid>`.
+ * renders the detail grid as a nested `<AgGridSolidUi>` (the internal-props form of
+ * `AgGridSolid`) flagged `hasAncestorStyledRoot`: it sits inside the master grid's styled root,
+ * so its own styled root must not re-apply the theme classes (upstream 36.3).
  *
  * NESTED-GRID VERDICT (ARCHITECTURE.md Open question 6, resolved T3.10): nested `AgGridSolid`
  * instances created during the master grid's render flush are SAFE under Solid 2.0 microtask
@@ -48,7 +49,7 @@ type DetailCellRendererProps = IDetailCellRendererParams & {
  */
 const DetailCellRenderer = (props: DetailCellRendererProps) => {
   const beans = useContext(BeansContext);
-  const { registry, context, gos, rowModel } = beans;
+  const { registry, context, gos, rowModel, log } = beans;
 
   // props arrive through RowComp's reactive full-width params spread (§7.1) — snapshot once.
   // Static is faithful: params changes route through the ctrl's refresh()/re-creation, not
@@ -84,8 +85,9 @@ const DetailCellRenderer = (props: DetailCellRendererProps) => {
 
   if (params.template) {
     // core-owned message (names React, behavior identical): string templates only work for
-    // frameworks that render from strings — provide a custom Solid detail cell renderer instead
-    _warn(230);
+    // frameworks that render from strings — provide a custom Solid detail cell renderer instead.
+    // Logged through the grid-scoped log bean so the diagnostic is attributed to this grid.
+    log.warn(230);
   }
 
   const setRef = (eRef: HTMLDivElement) => {
@@ -161,12 +163,13 @@ const DetailCellRenderer = (props: DetailCellRendererProps) => {
     <div class="ag-details-row" ref={setRef}>
       <Show when={detailGridOptions()}>
         {(gridOptions) => (
-          <AgGridSolid
+          <AgGridSolidUi
             class={gridClassName()}
             {...gridOptions()}
             modules={parentModules()}
             rowData={detailRowData()}
             ref={registerGridApi}
+            hasAncestorStyledRoot
           />
         )}
       </Show>

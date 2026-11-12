@@ -77,7 +77,7 @@ const PopupEditorComp = (props: PopupEditorCompProps) => {
       eChild: ePopupGui,
       closeOnEsc: true,
       closedCallback: (e?: MouseEvent | TouchEvent | KeyboardEvent) => {
-        cellCtrl.onPopupEditorClosed(e);
+        editSvc!.onPopupEditorClosed(cellCtrl, e);
       },
       anchorToElement: eParentCell,
       positionCallback,

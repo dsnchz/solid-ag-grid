@@ -45,7 +45,11 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     // GridCtrl.setComp stamps the grid id on the root wrapper
     expect(rootWrapper.getAttribute("grid-id")).toBeTruthy();
 
-    const body = rootWrapper.firstElementChild as HTMLDivElement;
+    // GridCtrl.setComp's aria-description container comes first (vanilla template order), then
+    // the body wrapper
+    const ariaDescription = rootWrapper.children[0] as HTMLDivElement;
+    expect(ariaDescription.classList.contains("ag-aria-description-container")).toBe(true);
+    const body = rootWrapper.children[1] as HTMLDivElement;
     expect(body.classList.contains("ag-root-wrapper-body")).toBe(true);
     expect(body.classList.contains("ag-focus-managed")).toBe(true);
     expect(body.classList.contains("ag-layout-normal")).toBe(true);
@@ -82,7 +86,7 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     await settle();
 
     const rootWrapper = container.querySelector(".ag-root-wrapper") as HTMLDivElement;
-    const body = rootWrapper.firstElementChild as HTMLDivElement;
+    const body = rootWrapper.querySelector(".ag-root-wrapper-body") as HTMLDivElement;
     expect(rootWrapper.classList.contains("ag-layout-normal")).toBe(true);
 
     const api = getGridApi(container.firstElementChild)!;

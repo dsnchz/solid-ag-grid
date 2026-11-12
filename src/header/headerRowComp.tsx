@@ -10,10 +10,9 @@ import type {
 import {
   _EmptyBean,
   _isHeaderFocusSuppressed,
-  _partitionByPinned,
   _updatePinnedSectionWidths,
 } from "ag-grid-community";
-import { _setAriaRowIndex } from "ag-stack";
+import { _addOrRemoveAttribute, _setAriaRowIndex } from "ag-stack";
 import { createMemo, createSignal, For, onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
@@ -22,18 +21,49 @@ import HeaderCellComp from "./headerCellComp";
 import HeaderFilterCellComp from "./headerFilterCellComp";
 import HeaderGroupCellComp from "./headerGroupCellComp";
 
-function getCellSectionSignature(ctrls: AbstractHeaderCellCtrl[], isPrint: boolean): string {
-  if (isPrint) {
-    return "print";
-  }
-
-  return ctrls
-    .map((ctrl) => {
-      const pinned = ctrl.column.getPinned() ?? "center";
-      return `${ctrl.instanceId}:${pinned}`;
-    })
-    .join("|");
+/** The lane each header cell renders in, keyed by position, so a section change is told without building a key. */
+interface CellSections {
+  isPrint: boolean;
+  ctrls: AbstractHeaderCellCtrl[];
+  lanes: number[];
 }
+
+/** Records `ctrls` and their lanes, returning whether they differ from the last recorded ones. */
+const updateCellSections = (
+  sections: CellSections,
+  ctrls: AbstractHeaderCellCtrl[],
+  isPrint: boolean,
+): boolean => {
+  const lanes = sections.lanes;
+  const len = ctrls.length;
+  let changed = isPrint !== sections.isPrint || (!isPrint && len !== sections.ctrls.length);
+  for (let i = 0; i < len && !isPrint; ++i) {
+    const cellCtrl = ctrls[i]!;
+    const lane = cellCtrl.column?.pinnedLane ?? 1;
+    if (cellCtrl !== sections.ctrls[i] || lane !== lanes[i]) {
+      changed = true;
+    }
+    lanes[i] = lane;
+  }
+  lanes.length = isPrint ? 0 : len;
+  sections.isPrint = isPrint;
+  sections.ctrls = ctrls;
+  return changed;
+};
+
+/** A header cell with no column renders in the centre. */
+const partitionByLane = (cellCtrls: AbstractHeaderCellCtrl[]) => {
+  const byLane: [AbstractHeaderCellCtrl[], AbstractHeaderCellCtrl[], AbstractHeaderCellCtrl[]] = [
+    [],
+    [],
+    [],
+  ];
+  for (let i = 0, len = cellCtrls.length; i < len; ++i) {
+    const cellCtrl = cellCtrls[i]!;
+    byLane[cellCtrl.column?.pinnedLane ?? 1].push(cellCtrl);
+  }
+  return { left: byLane[0], center: byLane[1], right: byLane[2] };
+};
 
 type HeaderRowCompProps = {
   ctrl: HeaderRowCtrl;
@@ -57,9 +87,14 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
   // Cell ctrls partitioned into 3 sections
   let cellCtrlsRef: AbstractHeaderCellCtrl[] = [];
   let prevCellCtrlsRef: AbstractHeaderCellCtrl[] = [];
-  let sectionSignature = "";
+  const sections: CellSections = { isPrint: false, ctrls: [], lanes: [] };
   let domOrder = false;
   const [cellCtrls, setCellCtrls] = createSignal<AbstractHeaderCellCtrl[]>([]);
+  // initial value is the creation-time read React makes in its useState initialiser; the ctrl
+  // pushes later changes through setTabIndex
+  const [tabIndex, setTabIndex] = createSignal<number | undefined>(
+    _isHeaderFocusSuppressed(beans) ? undefined : gos.get("tabIndex"),
+  );
 
   const pinnedWidthsCache: PinnedSectionWidthsCache = {
     pinnedLeftWidth: undefined,
@@ -82,15 +117,12 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
 
   const updateCellCtrls = (useFlush: boolean) => {
     const isPrint = gos.get("domLayout") === "print";
-    const nextSectionSignature = getCellSectionSignature(cellCtrlsRef, isPrint);
-    const shouldRefreshForSectionChange = sectionSignature !== nextSectionSignature;
-    const next = shouldRefreshForSectionChange
+    const next = updateCellSections(sections, cellCtrlsRef, isPrint)
       ? cellCtrlsRef
-      : getNextValueIfDifferent(prevCellCtrlsRef, cellCtrlsRef, domOrder)!;
+      : getNextValueIfDifferent(prevCellCtrlsRef, cellCtrlsRef, domOrder);
 
     if (next !== prevCellCtrlsRef) {
       prevCellCtrlsRef = next;
-      sectionSignature = nextSectionSignature;
       agFlush(useFlush, () => setCellCtrls(next));
     }
   };
@@ -130,6 +162,10 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
         _setAriaRowIndex(eGuiEl, rowIndex);
         eGuiEl.classList.toggle("ag-header-row-not-first", rowIndex !== 1);
       },
+      setTabIndex,
+      setAriaHidden: (hidden) => {
+        _addOrRemoveAttribute(eGuiEl, "aria-hidden", hidden ? "true" : null);
+      },
     };
 
     ctrl.setComp(compProxy, compBean);
@@ -151,9 +187,7 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
         right: [] as AbstractHeaderCellCtrl[],
       };
     }
-    return _partitionByPinned(cellCtrls(), (cellCtrl: AbstractHeaderCellCtrl) =>
-      cellCtrl.column.getPinned(),
-    );
+    return partitionByLane(cellCtrls());
   });
 
   const createCellJsx = (cellCtrl: AbstractHeaderCellCtrl) => {
@@ -167,8 +201,6 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
     }
   };
 
-  const tabIndex = _isHeaderFocusSuppressed(beans) ? undefined : gos.get("tabIndex");
-
   return (
     <div
       ref={(el) => {
@@ -177,7 +209,7 @@ const HeaderRowComp = (props: HeaderRowCompProps) => {
       }}
       class={ctrl.headerRowClass}
       role="row"
-      tabindex={tabIndex}
+      tabindex={tabIndex()}
     >
       <div
         ref={(el) => {

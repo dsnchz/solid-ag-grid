@@ -78,10 +78,6 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
     const eButtonShowMainFilterEl = eButtonShowMainFilter;
     compBean = context.createBean(new _EmptyBean());
 
-    userCompPromise = new AgPromise<IFloatingFilter>((resolve) => {
-      userCompResolve = resolve;
-    });
-
     const compProxy: IHeaderFilterCellComp = {
       toggleCss: (name, on) => cssManager.toggleCss(name, on),
       // user headerStyle keys arrive camelCased — _addStylesToElement hyphenates and applies
@@ -93,7 +89,15 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
       setWidth: (width) => {
         eGuiEl.style.width = width;
       },
-      setCompDetails: (compDetails) => setUserCompDetails(compDetails),
+      setCompDetails: (compDetails) => {
+        // getFloatingFilterComp resolves to the comp these details build, not the one they replace
+        userCompPromise = compDetails
+          ? new AgPromise<IFloatingFilter>((resolve) => {
+              userCompResolve = resolve;
+            })
+          : undefined;
+        setUserCompDetails(compDetails);
+      },
       getFloatingFilterComp: () => userCompPromise ?? null,
       setMenuIcon: (eIcon) => eButtonShowMainFilterEl.appendChild(eIcon),
     };
@@ -137,7 +141,7 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
           userCompRef(proxy as IFloatingFilter);
           setFloatingFilterCompProxy(proxy);
         } else {
-          warnReactiveCustomComponents();
+          warnReactiveCustomComponents(context.getId());
         }
       }
     },

@@ -173,6 +173,30 @@ describe("asyncProps (per-key isolation)", () => {
     const prev = { rowData, pagination: false };
     const next = { rowData, pagination: true };
 
-    expect(extractGridPropertyChanges(prev, next)).toEqual({ pagination: true });
+    expect(extractGridPropertyChanges(prev, next, Object.keys(prev), Object.keys(next))).toEqual({
+      pagination: true,
+    });
+  });
+
+  it("extractGridPropertyChanges clears an event handler dropped from props; other dropped keys keep their value", () => {
+    const onCellClicked = () => undefined;
+    const prev = { onCellClicked, pagination: true };
+    const next = {};
+
+    // toStrictEqual: toEqual treats an undefined-valued key as absent
+    expect(
+      extractGridPropertyChanges(prev, next, Object.keys(prev), Object.keys(next)),
+    ).toStrictEqual({ onCellClicked: undefined });
+  });
+
+  it("extractGridPropertyChanges keeps a pending event handler (omitted from the snapshot, still on props)", () => {
+    const onCellClicked = () => undefined;
+    const prev = { onCellClicked };
+    // refetching async handler: absent from the value snapshot, present in the props key list
+    const next = {};
+
+    expect(
+      extractGridPropertyChanges(prev, next, ["onCellClicked"], ["onCellClicked"]),
+    ).toStrictEqual({});
   });
 });

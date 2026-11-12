@@ -9,6 +9,7 @@ import { BeansContext } from "./core/beansContext";
 
 export type TabGuardRef = {
   forceFocusOutOfContainer(up?: boolean): void;
+  focusNextElementOutsideContainer(up: boolean, excludeElements: HTMLElement[]): boolean;
 };
 
 type TabGuardProps = {
@@ -35,7 +36,7 @@ const TabGuardComp = (props: TabGuardProps) => {
   // v36 sets the attribute imperatively on both guards without going through state; copy that —
   // no signal needed, and TabGuardCtrl.postConstruct may call this synchronously during setupCtrl.
   const setTabIndex = (value?: string | null) => {
-    const processedValue = value == null ? undefined : parseInt(value, 10).toString();
+    const processedValue = value == null ? undefined : Number.parseInt(value, 10).toString();
 
     for (const tabGuard of [eTopGuard, eBottomGuard]) {
       if (processedValue === undefined) {
@@ -75,6 +76,9 @@ const TabGuardComp = (props: TabGuardProps) => {
       forceFocusOutOfContainer(up?: boolean) {
         tabGuardCtrl?.forceFocusOutOfContainer(up);
       },
+      focusNextElementOutsideContainer(up: boolean, excludeElements: HTMLElement[]) {
+        return tabGuardCtrl?.focusNextElementOutsideContainer(up, excludeElements) ?? false;
+      },
     });
   };
 
@@ -89,7 +93,7 @@ const TabGuardComp = (props: TabGuardProps) => {
     return (
       <div
         class={`${TabGuardClassNames.TAB_GUARD} ${className}`}
-        role="presentation"
+        aria-hidden="true"
         ref={(e) => {
           if (side === "top") {
             eTopGuard = e;

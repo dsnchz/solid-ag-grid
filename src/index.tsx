@@ -1,10 +1,12 @@
 // Export surface mirrors ag-grid-react v36 (packages/ag-grid-react/src/index.ts in the AG Grid repo at
-// release-36.0.1 — local clone at tmp/ag-grid-36, see docs/field-guide/01).
+// release-36.3.0 — local clone at tmp/ag-grid-36, see docs/field-guide/01).
 // Deliberate deltas from the React package:
 // - AgGridSolidRef: extra type export — React types its imperative handle as the AgGridReact
 //   class itself; we have no class, so the `{ api }` ref shape needs a name.
-// - InternalAgGridReactProps: omitted — React-internal plumbing (passGridApi) for their class
-//   component wrapper; no Solid equivalent exists.
+// - InternalAgGridReactProps: omitted — framework-internal plumbing. React's `passGridApi` exists
+//   for their class component wrapper (no Solid equivalent); its `hasAncestorStyledRoot` flag is
+//   carried by the module-internal InternalAgGridSolidProps/AgGridSolidUi (agGridSolid.tsx),
+//   rendered only by DetailCellRenderer for nested detail grids.
 // - Deprecated AgGridReactProps members (maxComponentCreationTimeMs, setGridApi, children):
 //   omitted — deprecated in v33.3 and never part of this package's API.
 // - ModulesContext/LicenseContext: module-internal in both packages (not re-exported from the
@@ -32,6 +34,7 @@ export type {
   CustomCellEditorCallbacks,
   CustomCellEditorProps,
   CustomCellRendererProps,
+  CustomColumnSelectionLabelProps,
   CustomDateCallbacks,
   CustomDateProps,
   CustomDetailCellRendererProps,

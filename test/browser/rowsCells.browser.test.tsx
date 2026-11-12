@@ -118,7 +118,7 @@ describe("RowComp + CellComp (browser)", () => {
     unmount();
   });
 
-  it("parity: pinned:'left' column renders in the left lane with matching widths vs vanilla", async () => {
+  it("parity: pinned:'left' column renders in the left lane with matching widths vs vanilla, also after a resize", async () => {
     const pinnedDefs: ColDef<CarRow>[] = [
       { field: "make", pinned: "left" },
       { field: "price" },
@@ -126,15 +126,19 @@ describe("RowComp + CellComp (browser)", () => {
     ];
     const options: GridOptions<CarRow> = { columnDefs: pinnedDefs, rowData };
     const vanilla = mountVanilla(options);
+    let apiRef: AgGridSolidRef<CarRow> | undefined;
     const { container, unmount } = render(() => (
       <AgGridSolid
         containerStyle={{ height: "300px", width: "600px" }}
         columnDefs={pinnedDefs}
         rowData={rowData}
+        ref={(r) => (apiRef = r)}
       />
     ));
     await waitFor(
-      () => container.querySelectorAll(".ag-row .ag-grid-pinned-left-cells").length >= 3,
+      () =>
+        apiRef != null &&
+        container.querySelectorAll(".ag-row .ag-grid-pinned-left-cells").length >= 3,
     );
     await settle();
 
@@ -143,7 +147,6 @@ describe("RowComp + CellComp (browser)", () => {
 
     const sLeft = sRow.querySelector<HTMLElement>(".ag-grid-pinned-left-cells")!;
     const vLeft = vRow.querySelector<HTMLElement>(".ag-grid-pinned-left-cells")!;
-    expect(sLeft.style.width).toBe(vLeft.style.width);
     // pinned lanes wrap their cells in ag-grid-container-wrapper
     expect(sLeft.querySelector(".ag-grid-container-wrapper")).not.toBeNull();
     expect(vLeft.querySelector(".ag-grid-container-wrapper")).not.toBeNull();
@@ -152,9 +155,24 @@ describe("RowComp + CellComp (browser)", () => {
     expect(sRow.querySelector('.ag-grid-scrolling-cells .ag-cell[col-id="price"]')).not.toBeNull();
     expect(sRow.querySelector('.ag-grid-scrolling-cells .ag-cell[col-id="make"]')).toBeNull();
 
-    const sScroll = sRow.querySelector<HTMLElement>(".ag-grid-scrolling-cells")!;
-    const vScroll = vRow.querySelector<HTMLElement>(".ag-grid-scrolling-cells")!;
-    expect(sScroll.style.width).toBe(vScroll.style.width);
+    // every inline width inside the row (lanes and their wrappers; cells are left out, their
+    // widths are the core's), keyed by class list, so the check follows wherever the core puts
+    // lane widths and cannot pass on two empty values
+    const laneWidths = (row: HTMLElement) =>
+      Array.from(row.querySelectorAll<HTMLElement>("*"))
+        .filter((el) => !el.classList.contains("ag-cell") && el.style.width !== "")
+        .map((el) => `${Array.from(el.classList).sort().join(".")}=${el.style.width}`);
+    const vMounted = laneWidths(vRow);
+    expect(vMounted.length, "vanilla writes lane widths").toBeGreaterThan(0);
+    expect(laneWidths(sRow)).toEqual(vMounted);
+
+    // pinned lane widths are written imperatively by the ctrl: a resize must reach them
+    vanilla.api.setColumnWidths([{ key: "make", newWidth: 260 }]);
+    apiRef!.api.setColumnWidths([{ key: "make", newWidth: 260 }]);
+    await settle();
+    const vResized = laneWidths(vRow);
+    expect(vResized).not.toEqual(vMounted);
+    expect(laneWidths(sRow)).toEqual(vResized);
 
     vanilla.destroy();
     unmount();
