@@ -253,7 +253,7 @@ The [Maintainer's Field Guide](./docs/field-guide/00-how-to-use-this-guide.md) i
 
 - **Release candidate**, tracking the Solid 2.0 RC line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
 - **Versioning:** our major follows AG Grid's major — `36.x` supports AG Grid v36.
-- **Tested:** 197 tests across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
+- **Tested:** across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
 - **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture.
 - **Coming:**
   - **Expanded benchmarks** — published numbers for the adapter vs hand-written transactions vs naive row replacement (an informational 10k-row adapter benchmark already runs in CI).

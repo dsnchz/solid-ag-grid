@@ -85,7 +85,7 @@ they render inline under the per-cell `<Loading>` boundary.
    have already been caught post-fix). If a change invalidates a comment's
    claim, the comment changes in the same commit.
 4. **Behavior changes need an oracle scenario**; refactors must not touch
-   existing tests (the suite is the preservation proof — 165 tests today).
+   existing tests (the suite is the preservation proof).
 5. **Gates**: lint, format, typecheck, build, test — plus `check:solid`
    advisory; new SC1xxx findings get triaged, not ignored.
 6. **Judgment calls get written down** — in the commit message or the report.
