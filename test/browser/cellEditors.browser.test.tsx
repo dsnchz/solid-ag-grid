@@ -292,6 +292,54 @@ describe("Cell editors (browser)", () => {
     vanilla.destroy();
   });
 
+  it("parity: a cell renderer stays mounted while a popup editor opens over its cell and after Escape closes it", async () => {
+    // the editor branch and the value are separate holes: opening or closing a popup editor
+    // must not rebuild the renderer (a stateful renderer would lose its state); vanilla keeps
+    // its renderer's element too
+    const SolidMake = (props: { value?: string }) => <b class="make-r">{props.value}</b>;
+    class VanillaMake {
+      private eGui = document.createElement("b");
+      init(params: { value?: string }) {
+        this.eGui.className = "make-r";
+        this.eGui.textContent = params.value ?? "";
+      }
+      getGui() {
+        return this.eGui;
+      }
+      // refreshes in place, like a Solid renderer taking pushed params (false would ask the
+      // grid for a new renderer when editing stops)
+      refresh(params: { value?: string }) {
+        this.eGui.textContent = params.value ?? "";
+        return true;
+      }
+    }
+    const defs = (cellRenderer: unknown): GridOptions<CarRow>["columnDefs"] => [
+      { field: "make", editable: true, cellEditorPopup: true, cellRenderer },
+      { field: "price" },
+    ];
+    const solid = mountSolid({ columnDefs: defs(SolidMake), rowData: rowData() });
+    const vanilla = mountVanilla({ columnDefs: defs(VanillaMake), rowData: rowData() });
+    await gridsReady(solid, vanilla.container);
+
+    const renderer = (root: Element) => cellFor(root, 0, "make")!.querySelector(".make-r");
+    const popupFlow = async (root: Element, api: GridApi<CarRow>) => {
+      const before = renderer(root);
+      expect(before?.textContent).toBe("Toyota");
+      api.startEditingCell({ rowIndex: 0, colKey: "make" });
+      await waitFor(() => document.querySelector(".ag-popup-editor") != null);
+      expect(renderer(root)).toBe(before);
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => document.querySelector(".ag-popup-editor") == null);
+      expect(renderer(root)).toBe(before);
+    };
+
+    await popupFlow(vanilla.container, vanilla.api);
+    await popupFlow(solid.container, solid.api()!);
+
+    solid.unmount();
+    vanilla.destroy();
+  });
+
   it("parity: custom Solid popup editor renders via Portal inside the PopupEditorWrapper; stopEditingWhenCellsLoseFocus modal behavior matches vanilla", async () => {
     const SolidPopupEditor = (props: CustomCellEditorProps<CarRow, string>) => {
       let el!: HTMLInputElement;

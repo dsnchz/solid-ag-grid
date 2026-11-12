@@ -165,6 +165,16 @@ row swap 5.8 → 5.5 ms tall (runs 5.7–5.8 vs 5.5–5.6) and 5.6 → 5.5 ms wi
 overlap); initial render 46.9 → 44.1 ms tall and 16.4 → 15.1 ms wide, now at
 vanilla's 45.6 / 15.2; scroll and streaming unchanged.
 
+**Rejected: three direct cell holes (2026-11-12).** The same move on the cell
+(value, editor and wrapper as three direct children of the cell element, each
+switched off by the wrapper decision, instead of the wrapper hole over a
+fragment whose two holes each need a compiler memo) cut the cell to 8
+computations and allocation 61.8 → 60.0 KB per swap, yet row swap got slower:
+5.3 → 5.5 ms tall and 5.2 → 5.5 ms wide (interleaved, medians of 3; runs
+mostly do not overlap). Several dynamic children of one element need DOM
+markers and positioned inserts where one child is a plain append. The node
+count is a proxy; the A/B decides.
+
 ## How to measure (and the two traps)
 
 Everything runs in the `perf` vitest project (`pnpm test:perf`; weekly in CI),
