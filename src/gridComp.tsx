@@ -248,6 +248,7 @@ const GridComp = (props: GridCompProps) => {
         }
       };
     },
+    { name: "GridComp.optionalSelectors" },
   );
 
   const rootWrapperClasses = createMemo(() => classesList("ag-root-wrapper", layoutClass()));

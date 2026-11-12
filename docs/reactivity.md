@@ -66,7 +66,7 @@ const rows = createMemo(() => fetchRows(query())); // async — returns a Promis
 
 - **Initial load:** the pending key is simply absent from the creation snapshot → the grid boots with no rows and shows its loading overlay (customizable via `loadingOverlayComponent` — a Solid component that can read your app signals).
 - **On resolve:** the tracked read already subscribed the prop-diff computation, so it re-runs and the data flows in as a normal option change.
-- **Dev console, Solid rc.21+:** while a never-loaded async prop is pending, Solid logs one `[CAUGHT_REACTIVE_READ]` warning per grid, naming the grid's prop-diff `effect`. It is expected. On the first load the per-key guard (design note below) has to catch the read: Solid offers no non-throwing readiness probe for a source that has never produced a value. Behavior is as described above. A catch-free probe has been requested upstream ([solidjs/solid#4789](https://github.com/solidjs/solid/issues/4789)).
+- **Dev console, Solid rc.21+:** while a never-loaded async prop is pending, Solid logs one `[CAUGHT_REACTIVE_READ]` warning per grid, naming the grid's prop-sync effect `AgGridSolid.gridOptions`. It is expected. On the first load the per-key guard (design note below) has to catch the read: Solid offers no non-throwing readiness probe for a source that has never produced a value. Behavior is as described above. A catch-free probe has been requested upstream ([solidjs/solid#4789](https://github.com/solidjs/solid/issues/4789)).
 
 ### Stale-while-revalidate refetches — a guaranteed contract
 

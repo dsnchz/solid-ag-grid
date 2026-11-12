@@ -91,6 +91,7 @@ const HeaderGroupCellComp = (props: HeaderGroupCellCompProps) => {
       showJsComp(compDetails, context, eHeaderCompWrapper!, (instance) => {
         userComp = instance;
       }),
+    { name: "HeaderGroupCellComp.jsComp" },
   );
 
   // reactive → core push: (re)attach the drag source once the group header comp is in the DOM
@@ -100,6 +101,7 @@ const HeaderGroupCellComp = (props: HeaderGroupCellCompProps) => {
     () => {
       ctrl.setDragSource(eGui!);
     },
+    { name: "HeaderGroupCellComp.dragSource" },
   );
 
   // framework (Solid) group header comps render inline; the imperative handle arrives iff the

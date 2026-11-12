@@ -96,6 +96,7 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
       showJsComp(compDetails, context, eHeaderCompWrapper!, (instance) => {
         userComp = instance;
       }),
+    { name: "HeaderCellComp.jsComp" },
   );
 
   // reactive → core push: (re)attach the drag source once the header comp is in the DOM
@@ -105,6 +106,7 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
     () => {
       ctrl.setDragSource(eGui);
     },
+    { name: "HeaderCellComp.dragSource" },
   );
 
   // framework (Solid) header comps render inline; the imperative handle arrives iff the user

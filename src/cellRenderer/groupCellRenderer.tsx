@@ -139,6 +139,7 @@ const GroupCellRenderer = (props: GroupCellRendererProps) => {
   createEffect(
     () => innerCompDetails(),
     (details) => showJsComp(details, context, eValue!),
+    { name: "GroupCellRenderer.innerJsRenderer" },
   );
 
   const expandedClassName = createMemo(() =>

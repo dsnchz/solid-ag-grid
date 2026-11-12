@@ -334,6 +334,7 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
         }
       });
     },
+    { name: "AgGridSolid.gridOptions" },
   );
 
   return (

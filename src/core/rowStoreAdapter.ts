@@ -203,7 +203,7 @@ export const createRowStoreAdapter = <TData>(
             pendingUpdates.set(key, plain as TData);
             scheduleUpdateFlush();
           },
-          { defer: true },
+          { name: "rowStore.rowFields", defer: true },
         );
         return dispose;
       }),
@@ -310,6 +310,7 @@ export const createRowStoreAdapter = <TData>(
         }
       });
     },
+    { name: "rowStore.structure" },
   );
 
   return { seedRows };

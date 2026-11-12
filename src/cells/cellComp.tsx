@@ -214,6 +214,7 @@ const CellComp = (props: CellCompProps) => {
         (gui) => {
           setJsGui(gui);
         },
+        { name: "CellComp.jsRendererGui" },
       );
       jsRenderer = renderer;
     });
@@ -461,6 +462,7 @@ const CellComp = (props: CellCompProps) => {
                 setRenderKey((prev) => prev + 1);
               }
             },
+            { name: "CellComp.rendererRefresh" },
           );
           return (
             <Loading fallback={<SkeletonCellRenderer cellCtrl={cellCtrl} />}>
@@ -573,6 +575,7 @@ const CellComp = (props: CellCompProps) => {
             compGui?.remove();
           };
         },
+        { name: "CellComp.jsEditor" },
       );
     }
     return jsxEditValue(
@@ -663,6 +666,7 @@ const CellComp = (props: CellCompProps) => {
           }
         };
       },
+      { name: "CellComp.toolWidgets" },
     );
     // the drag handle re-evaluates its visibility when the cell's compDetails change
     // (React: in the refresh layout effect, for every cell; here only a drag cell pays)
@@ -674,6 +678,7 @@ const CellComp = (props: CellCompProps) => {
             rowDragComp?.refreshVisibility();
           }
         },
+        { name: "CellComp.rowDragVisibility" },
       );
     }
     return (

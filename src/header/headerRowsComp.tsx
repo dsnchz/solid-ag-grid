@@ -68,6 +68,7 @@ const HeaderRowsComp = (props: HeaderRowsCompProps) => {
           .filter((el): el is HTMLDivElement => !!el),
       );
     },
+    { name: "HeaderRowsComp.focusableElements" },
   );
 
   return (

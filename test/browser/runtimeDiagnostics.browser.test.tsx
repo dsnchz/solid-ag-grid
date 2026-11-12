@@ -7,7 +7,7 @@
 // a never-loaded async prop's CAUGHT_REACTIVE_READ (src/core/asyncProps.ts verdict,
 // solidjs/solid#4789). Captured with @solidjs/diagnostics in the dev build (browser project).
 import type { DiagnosticsArtifact } from "@solidjs/diagnostics";
-import { captureArtifact } from "@solidjs/diagnostics";
+import { captureArtifact, expectRerunBudget } from "@solidjs/diagnostics";
 import { render } from "@solidjs/testing-library";
 import type { ColDef, GridApi, ICellRendererParams } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
@@ -244,8 +244,71 @@ describe("runtime diagnostics (dev build)", () => {
       resolve(makeRows(30));
       await waitFor(() => api != null && grid.cellCount() > 20);
     });
-    expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatch(/^CAUGHT_REACTIVE_READ: /);
+    // the owner is the grid's named prop-sync effect, so the warning a user sees points at it
+    expect(seen).toEqual(["CAUGHT_REACTIVE_READ: AgGridSolid.gridOptions / rowData"]);
     expect(api!.getDisplayedRowCount()).toBe(30);
+  });
+});
+
+// UPDATE GRANULARITY: a value change reaches only the cell it changes. Counted as re-runs of
+// existing scopes (attribution), so a fan-out to the row, the column or the viewport — every
+// visible cell re-checking its details — fails with the offending scopes as evidence. The
+// budgets are the measured counts for one cell on Solid 2.0.0-rc.21: tighten them if a change
+// makes the cell cheaper; raise them only with a design note.
+describe("re-run budgets (update granularity)", () => {
+  const RendererCell = (props: ICellRendererParams<Row>) => <b>{props.value}</b>;
+  const granularColumns: ColDef<Row>[] = [
+    { field: "price", cellRenderer: RendererCell },
+    { field: "qty" },
+  ];
+
+  const mountForUpdates = async () => {
+    const data = makeRows(50);
+    let api: GridApi<Row> | undefined;
+    const grid = mountGrid(() => (
+      <AgGridSolid
+        containerStyle={{ height: "300px", width: "600px" }}
+        columnDefs={granularColumns}
+        rowData={data}
+        getRowId={(p) => p.data.id}
+        ref={(r: AgGridSolidRef<Row>) => (api = r.api)}
+      />
+    ));
+    await waitFor(() => api != null && grid.cellCount() > 10);
+    await tick();
+    return { data, api: api!, grid };
+  };
+
+  const captureUpdate = async (run: () => void) => {
+    const { artifact } = await captureArtifact(
+      async () => {
+        run();
+        await tick(40);
+      },
+      { scenario: "one-cell update", attribution: { log: false } },
+    );
+    return artifact;
+  };
+
+  it("one Solid-renderer cell's value: only that cell's five scopes re-run", async () => {
+    const { data, api, grid } = await mountForUpdates();
+    const artifact = await captureUpdate(() =>
+      api.applyTransaction({ update: [{ ...data[3]!, price: 999 }] }),
+    );
+    // wrapper check, renderer props merge, renderer identity, refresh bridge, the renderer's text
+    expectRerunBudget(artifact, 5);
+    expectRerunBudget(artifact, 1, { scope: "frameworkRendererInfo" });
+    expect(grid.container.querySelector('.ag-row[row-id="r3"] b')?.textContent).toBe("999");
+  });
+
+  it("one plain cell's value: only its value memo and text re-run", async () => {
+    const { data, api, grid } = await mountForUpdates();
+    const artifact = await captureUpdate(() =>
+      api.applyTransaction({ update: [{ ...data[4]!, qty: 999 }] }),
+    );
+    expectRerunBudget(artifact, 2);
+    expect(
+      grid.container.querySelector('.ag-row[row-id="r4"] .ag-cell[col-id="qty"]')?.textContent,
+    ).toBe("999");
   });
 });

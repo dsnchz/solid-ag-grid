@@ -115,6 +115,7 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
   createEffect(
     () => userCompDetails(),
     (compDetails) => showJsComp(compDetails, context, eFloatingFilterBody!, userCompRef),
+    { name: "HeaderFilterCellComp.jsComp" },
   );
 
   // reactiveCustomComponents/enableFilterHandlers are wrapper-creation-time reads in React too
@@ -145,6 +146,7 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
         }
       }
     },
+    { name: "HeaderFilterCellComp.frameworkComp" },
   );
 
   const jsxFloatingFilterProxy = (proxy: FloatingFilterProxy, UserCompClass: any) => {

@@ -351,6 +351,7 @@ const RowComp = (props: RowCompProps) => {
         showJsComp(details, context, eFullWidthAnchor ?? eGui!, (instance) => {
           fullWidthComp = instance;
         }),
+      { name: "RowComp.fullWidthJsComp" },
     );
 
     // puts autoHeight onto full-width detail rows. this needs trickery, as we need the
@@ -376,6 +377,7 @@ const RowComp = (props: RowCompProps) => {
           setTimeout(() => setAutoHeightSetupAttempt(attempt + 1), 0);
         }
       },
+      { name: "RowComp.detailAutoHeight" },
     );
   }
 
@@ -391,6 +393,7 @@ const RowComp = (props: RowCompProps) => {
           fullWidthEmbeddedLeftComp = instance;
         });
       },
+      { name: "RowComp.embeddedLeft" },
     );
     createEffect(
       () => embeddedFullWidthCompDetails()?.center,
@@ -402,6 +405,7 @@ const RowComp = (props: RowCompProps) => {
           fullWidthEmbeddedCenterComp = instance;
         });
       },
+      { name: "RowComp.embeddedCenter" },
     );
     createEffect(
       () => embeddedFullWidthCompDetails()?.right,
@@ -413,6 +417,7 @@ const RowComp = (props: RowCompProps) => {
           fullWidthEmbeddedRightComp = instance;
         });
       },
+      { name: "RowComp.embeddedRight" },
     );
 
     // embedded lane content tracking: the core hides/sizes lanes based on whether each one has
@@ -451,6 +456,7 @@ const RowComp = (props: RowCompProps) => {
 
         return () => observer.disconnect();
       },
+      { name: "RowComp.embeddedLaneContent" },
     );
   }
 

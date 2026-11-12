@@ -127,6 +127,7 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
       // the refresh-else-recreate path above can run against it. React 36.3's cleanup only marks
       // a pending instance stale, which the compVersion bump already does.
     },
+    { name: "JsCellRenderer.lifecycle" },
   );
 
   // final disposal only — the update effect above deliberately keeps the comp alive
