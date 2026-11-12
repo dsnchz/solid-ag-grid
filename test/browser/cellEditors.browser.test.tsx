@@ -323,8 +323,9 @@ describe("Cell editors (browser)", () => {
 
     const renderer = (root: Element) => cellFor(root, 0, "make")!.querySelector(".make-r");
     const popupFlow = async (root: Element, api: GridApi<CarRow>) => {
+      // the renderer may land after the cells exist (the Solid one renders inside its Loading)
+      await waitFor(() => renderer(root)?.textContent === "Toyota");
       const before = renderer(root);
-      expect(before?.textContent).toBe("Toyota");
       api.startEditingCell({ rowIndex: 0, colKey: "make" });
       await waitFor(() => document.querySelector(".ag-popup-editor") != null);
       expect(renderer(root)).toBe(before);
