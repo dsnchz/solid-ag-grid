@@ -23,6 +23,7 @@ src/
 │   ├── gridPortals.tsx        the <For>/<Portal> render loop
 │   ├── utils.ts               agFlush + runWithoutFlush latch, CssClasses
 │   ├── jsComp.ts              mounts JS (non-Solid) user comps
+│   ├── compClaim.ts           one live comp per ctrl (React's deletion-first commit order)
 │   ├── beansContext.ts        BeanCollection context (default-less: throws)
 │   └── renderStatusService.ts "has the framework painted yet?" (core asks)
 │
@@ -44,6 +45,7 @@ the grid core except through its ctrl and the bridge.
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | setComp in refs; refs write-ok / read-stale                                  | `gridComp.tsx` verdict block                                     | `test/unit/setCompScopes.test.tsx`                                      |
 | Guarded `setup()` (refs run parent-first)                                    | `gridComp`, `tabGuardComp`, `rowContainerComp`, header comps     | header/row browser suites, `gridComp` suites                            |
+| One live comp per ctrl: a moved header ctrl's old comp tears down first      | `core/compClaim.ts`; header cell, group cell, filter cell comps  | `headersComplete` ("pinned … and unpinned at runtime")                  |
 | `flush()` safe; latch is hygiene                                             | `core/utils.ts` verdict on `agFlush`                             | `test/unit/flushSemantics.test.tsx`                                     |
 | `ownedWrite` on disposal-cleared bridge signals                              | `cells/` (`gui`, `toolWidgets`, `jsEditorComp`), portals signal  | dev-mode-clean browser suites                                           |
 | Per-key isolation; omitted ≠ undefined (SWR)                                 | `core/asyncProps.ts` verdict block                               | `rowsCells` ("async rowData"), `staleWhileRevalidate`, `asyncBootNoise` |

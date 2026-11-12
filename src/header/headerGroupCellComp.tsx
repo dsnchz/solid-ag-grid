@@ -14,6 +14,7 @@ import { _addStylesToElement, _setDisplayed, CssClassManager } from "ag-stack";
 import { createEffect, createSignal, onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
+import { claimCtrl } from "../core/compClaim";
 import { showJsComp } from "../core/jsComp";
 
 type HeaderGroupCellCompProps = {
@@ -31,6 +32,7 @@ const HeaderGroupCellComp = (props: HeaderGroupCellCompProps) => {
   const [userCompDetails, setUserCompDetails] = createSignal<UserCompDetails>();
 
   let compBean: _EmptyBean | undefined;
+  let releaseCtrl: (() => void) | undefined;
   let eGui: HTMLDivElement | undefined;
   let eResize: HTMLDivElement | undefined;
   let eHeaderCompWrapper: HTMLDivElement | undefined;
@@ -76,12 +78,14 @@ const HeaderGroupCellComp = (props: HeaderGroupCellCompProps) => {
       getUserCompInstance: () => userComp ?? undefined,
     };
 
+    // one live comp per ctrl (src/core/compClaim.ts)
+    releaseCtrl = claimCtrl(ctrl, () => {
+      compBean = context.destroyBean(compBean);
+    });
     ctrl.setComp(compProxy, eGuiEl, eResizeEl, eHeaderCompWrapperEl, compBean);
   };
 
-  onCleanup(() => {
-    compBean = context.destroyBean(compBean);
-  });
+  onCleanup(() => releaseCtrl?.());
 
   // signal-keyed lifecycle of a non-Solid instance: mount/destroy the JS group header component
   // whenever the comp details change (React: useLayoutEffect over [userCompDetails])

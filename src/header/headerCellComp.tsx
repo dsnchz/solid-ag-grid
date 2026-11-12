@@ -10,6 +10,7 @@ import { _addStylesToElement, _removeAriaSort, _setAriaSort, CssClassManager } f
 import { createEffect, createSignal, onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
+import { claimCtrl } from "../core/compClaim";
 import { showJsComp } from "../core/jsComp";
 
 type HeaderCellCompProps = {
@@ -26,6 +27,7 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
   const [userCompDetails, setUserCompDetails] = createSignal<UserCompDetails>();
 
   let compBean: _EmptyBean | undefined;
+  let releaseCtrl: (() => void) | undefined;
   let eGui: HTMLDivElement | undefined;
   let eResize: HTMLDivElement | undefined;
   let eHeaderCompWrapper: HTMLDivElement | undefined;
@@ -79,14 +81,17 @@ const HeaderCellComp = (props: HeaderCellCompProps) => {
       removeSelectAllGui: () => ctrl.getSelectAllGui()?.remove(),
     };
 
+    // one live comp per ctrl (src/core/compClaim.ts): a moved column's old comp is torn down
+    // before this one takes the ctrl, as React's commit order guarantees
+    releaseCtrl = claimCtrl(ctrl, () => {
+      compBean = context.destroyBean(compBean);
+    });
     ctrl.setComp(compProxy, eGuiEl, eResizeEl, eHeaderCompWrapper, compBean);
 
     refreshSelectAllGui();
   };
 
-  onCleanup(() => {
-    compBean = context.destroyBean(compBean);
-  });
+  onCleanup(() => releaseCtrl?.());
 
   // signal-keyed lifecycle of a non-Solid instance: mount/destroy the JS header component
   // whenever the comp details change (React: useLayoutEffect over [userCompDetails])

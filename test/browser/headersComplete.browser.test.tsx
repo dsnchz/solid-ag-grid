@@ -271,6 +271,67 @@ describe("Headers complete (browser)", () => {
     solid.unmount();
   });
 
+  it.each(["left", "right"] as const)(
+    "parity: a grouped column with a floating filter pinned %s and unpinned at runtime keeps a live header — later sort and resize reach it like vanilla, and unmount is clean",
+    async (side) => {
+      const columnDefs: (ColDef<CarRow> | ColGroupDef<CarRow>)[] = [
+        {
+          headerName: "Car",
+          groupId: "car",
+          children: [{ field: "make" }, { field: "model" }],
+        },
+        { field: "price" },
+      ];
+      const options: GridOptions<CarRow> = {
+        columnDefs,
+        rowData: rowData(),
+        defaultColDef: { filter: "agTextColumnFilter", floatingFilter: true },
+      };
+      const vanilla = mountVanilla(options);
+      const solid = mountSolid(options);
+      await waitFor(() => solid.container.querySelector(".ag-header-row-filter") != null);
+      await settle();
+
+      // the moved column's header cell, group header and floating filter change header lanes
+      // twice; each lane change hands the same header ctrls to a new comp
+      for (const pinned of [side, null]) {
+        const state = { state: [{ colId: "model", pinned }] };
+        vanilla.api.applyColumnState(state);
+        solid.api()!.applyColumnState(state);
+        await waitFor(
+          () => solid.container.querySelector('.ag-header-cell[col-id="model"]') != null,
+        );
+        await settle();
+      }
+      const sort = { state: [{ colId: "model", sort: "asc" as const }] };
+      vanilla.api.applyColumnState(sort);
+      solid.api()!.applyColumnState(sort);
+      vanilla.api.setColumnWidths([{ key: "model", newWidth: 177 }]);
+      solid.api()!.setColumnWidths([{ key: "model", newWidth: 177 }]);
+      await waitFor(
+        () =>
+          solid.container
+            .querySelector('.ag-header-cell[col-id="model"]')
+            ?.getAttribute("aria-sort") === "ascending",
+      );
+
+      const header = (root: Element) =>
+        root.querySelector<HTMLElement>('.ag-header-cell[col-id="model"]')!;
+      expect(header(solid.container).getAttribute("aria-sort")).toBe(
+        header(vanilla.container).getAttribute("aria-sort"),
+      );
+      expect(header(solid.container).style.width).toBe(header(vanilla.container).style.width);
+      expect(header(solid.container).style.width).toBe("177px");
+      const floatingFilters = (root: Element) =>
+        root.querySelectorAll(".ag-header-row-filter .ag-floating-filter").length;
+      expect(floatingFilters(solid.container)).toBe(floatingFilters(vanilla.container));
+      expect(displayedMakes(solid.container)).toEqual(displayedMakes(vanilla.container));
+
+      vanilla.destroy();
+      solid.unmount();
+    },
+  );
+
   it("parity: built-in floating filter row — typing filters rows identically to vanilla; the filter button opens the column filter", async () => {
     const columnDefs: ColDef<CarRow>[] = [
       {

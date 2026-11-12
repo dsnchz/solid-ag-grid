@@ -11,6 +11,7 @@ import { _addStylesToElement, _setDisplayed, CssClassManager } from "ag-stack";
 import { createEffect, createSignal, onCleanup, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
+import { claimCtrl } from "../core/compClaim";
 import { showJsComp } from "../core/jsComp";
 import { CustomContext } from "../customComp/customContext";
 import { FloatingFilterComponentProxy } from "../customComp/floatingFilterComponentProxy";
@@ -39,6 +40,7 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
   const [floatingFilterCompProxy, setFloatingFilterCompProxy] = createSignal<FloatingFilterProxy>();
 
   let compBean: _EmptyBean | undefined;
+  let releaseCtrl: (() => void) | undefined;
   let eGui: HTMLDivElement | undefined;
   let eFloatingFilterBody: HTMLDivElement | undefined;
   let eButtonWrapper: HTMLDivElement | undefined;
@@ -102,12 +104,14 @@ const HeaderFilterCellComp = (props: HeaderFilterCellCompProps) => {
       setMenuIcon: (eIcon) => eButtonShowMainFilterEl.appendChild(eIcon),
     };
 
+    // one live comp per ctrl (src/core/compClaim.ts)
+    releaseCtrl = claimCtrl(ctrl, () => {
+      compBean = context.destroyBean(compBean);
+    });
     ctrl.setComp(compProxy, eGuiEl, eButtonShowMainFilterEl, eFloatingFilterBody, compBean);
   };
 
-  onCleanup(() => {
-    compBean = context.destroyBean(compBean);
-  });
+  onCleanup(() => releaseCtrl?.());
 
   // signal-keyed lifecycle of a non-Solid instance: mount/destroy the JS floating filter
   // (all built-in floating filters) whenever the comp details change; its ref resolves the
