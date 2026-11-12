@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@dschz/solid-ag-grid':
-        specifier: 36.0.0-next.7
-        version: 36.0.0-next.7(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(ag-grid-community@36.3.0)(solid-js@2.0.0-rc.21)
+        specifier: 36.0.0-next.8
+        version: 36.0.0-next.8(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(ag-grid-community@36.3.0)(solid-js@2.0.0-rc.21)
       '@solidjs/web':
         specifier: 2.0.0-rc.21
         version: 2.0.0-rc.21(solid-js@2.0.0-rc.21)
@@ -104,8 +104,8 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@dschz/solid-ag-grid@36.0.0-next.7':
-    resolution: {integrity: sha512-np0o0yCSVrkLf0eGJpbI7nDVKtWa/Oif4GK7iLjWOjygzNfmpC4GFwc+pp7EU5z7lTyT6qIy0u4FBaG/nlFZIQ==}
+  '@dschz/solid-ag-grid@36.0.0-next.8':
+    resolution: {integrity: sha512-yPLJlDHZOC+r+dL4u8k3ekL54XOqwiEdXmvAqaFANTjs+EVqwns4kkoSX3DUM2UNJWIVYDwp2ymdYoHbdmJvwQ==}
     peerDependencies:
       '@solidjs/web': ^2.0.0-rc.21
       ag-grid-community: 36.3.0
@@ -732,7 +732,7 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
     optional: true
 
-  '@dschz/solid-ag-grid@36.0.0-next.7(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(ag-grid-community@36.3.0)(solid-js@2.0.0-rc.21)':
+  '@dschz/solid-ag-grid@36.0.0-next.8(@solidjs/web@2.0.0-rc.21(solid-js@2.0.0-rc.21))(ag-grid-community@36.3.0)(solid-js@2.0.0-rc.21)':
     dependencies:
       '@solidjs/web': 2.0.0-rc.21(solid-js@2.0.0-rc.21)
       ag-grid-community: 36.3.0
