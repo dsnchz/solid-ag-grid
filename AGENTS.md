@@ -50,7 +50,7 @@ Solid tooling installed in `node_modules`:
   - `node_modules/solid-js/skills/solid-2.0/SKILL.md`: the Solid 2.0 primer.
   - `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`: every warning code and its fix.
   - `node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`: capture evidence and assert budgets.
-- **Warnings are defects.** A console warning with a bracketed code, such as `[REACTIVE_WRITE_IN_OWNED_SCOPE]`, is a defect: look it up in the repair guide; do not suppress it. The one accepted warning is `CAUGHT_REACTIVE_READ` from `AgGridSolid.gridOptions`, raised while an async prop has not loaded yet (`src/core/asyncProps.ts`, solidjs/solid#4789).
+- **Warnings are defects.** A console warning with a bracketed code, such as `[REACTIVE_WRITE_IN_OWNED_SCOPE]`, is a defect: look it up in the repair guide; do not suppress it. There are no accepted warnings: `runtimeDiagnostics.browser.test.tsx` pins zero diagnostics on every realistic path, a never-loaded async prop included.
 - **Verifying a reactive change:**
   - in tests, use `captureArtifact` from `@solidjs/diagnostics` (see `test/browser/runtimeDiagnostics.browser.test.tsx`);
   - live, while `pnpm dev` runs, `POST /__solid/diagnostics` with `{"method":"begin","params":{"attribution":true}}` … `{"method":"end"}`.

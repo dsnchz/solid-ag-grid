@@ -1,9 +1,18 @@
-import { createEffect, createMemo, createRoot, createSignal, flush, NotReadyError } from "solid-js";
-import { describe, expect, it } from "vitest";
-
 import {
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  createStore,
+  flush,
+  merge,
+} from "solid-js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { GridPropGuards } from "../../src/core/asyncProps";
+import {
+  createGridPropGuards,
   extractGridPropertyChanges,
-  readPropIfReady,
   snapshotGridProps,
 } from "../../src/core/asyncProps";
 
@@ -15,118 +24,28 @@ import {
  * read semantics in isolation.
  */
 describe("asyncProps (per-key isolation)", () => {
-  it("copies a ready prop value onto the target", () => {
-    const target: Record<string, unknown> = {};
-    const rowData = [{ make: "Toyota" }];
+  const tick = () => new Promise<void>((r) => setTimeout(r, 5));
 
-    readPropIfReady({ rowData }, "rowData", target);
-
-    expect(target.rowData).toBe(rowData);
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("omits a key whose read throws NotReadyError (pending async prop)", () => {
-    const props = {
-      get rowData(): unknown {
-        throw new NotReadyError(undefined);
-      },
-    };
-    const target: Record<string, unknown> = {};
-
-    expect(() => readPropIfReady(props, "rowData", target)).not.toThrow();
-    expect("rowData" in target).toBe(false);
-  });
-
-  it("omits a key whose read throws the dev-mode PENDING_ASYNC_UNTRACKED_READ plain Error", () => {
-    const props = {
-      get rowData(): unknown {
-        // dev builds throw a plain Error carrying this diagnostic code (not NotReadyError)
-        // for untracked pending reads — the grid-creation read path
-        throw new Error(
-          "[PENDING_ASYNC_UNTRACKED_READ] Reading a pending async value directly in an untracked scope.",
-        );
-      },
-    };
-    const target: Record<string, unknown> = {};
-
-    expect(() => readPropIfReady(props, "rowData", target)).not.toThrow();
-    expect("rowData" in target).toBe(false);
-  });
-
-  it("rethrows errors that are not not-ready signals (user getter bugs must surface)", () => {
-    const props = {
-      get rowData(): unknown {
-        throw new Error("boom");
-      },
-    };
-
-    expect(() => readPropIfReady(props, "rowData", {})).toThrow("boom");
-  });
-
-  it("viaLatest: a pending async prop reads as undefined (no throw), then resolves (creation-time path)", async () => {
-    let resolvePromise!: (value: string[]) => void;
-    const promise = new Promise<string[]>((resolve) => (resolvePromise = resolve));
-
-    const { dispose, data } = createRoot((d) => {
-      const pendingData = createMemo(() => promise);
-      return { dispose: d, data: pendingData };
-    });
-
-    try {
-      const props = {
-        get rowData() {
-          return data();
-        },
-      };
-
-      // pending: latest() bypasses the pending-link machinery — the read yields undefined
-      // rather than suspending or linking, so the grid boots with "no rowData yet" (loading
-      // overlay), never a throw out of the boot path. Contrast: a direct (non-latest)
-      // untracked read of the same pending memo throws.
-      const before: Record<string, unknown> = {};
-      expect(() => readPropIfReady(props, "rowData", before, true)).not.toThrow();
-      expect(before.rowData).toBeUndefined();
-      expect(() => readPropIfReady(props, "rowData", {})).not.toThrow();
-
-      resolvePromise(["ready"]);
-      await promise;
-      flush();
-
-      // resolved: the same viaLatest read now yields the value
-      const after: Record<string, unknown> = {};
-      readPropIfReady(props, "rowData", after, true);
-      expect(after.rowData).toEqual(["ready"]);
-    } finally {
-      dispose();
-    }
-  });
-
-  it("snapshotGridProps skips excluded keys and omits not-ready keys, keeping the rest", () => {
-    const props = {
-      rowData: [1, 2],
-      class: "my-grid",
-      get columnDefs(): unknown {
-        throw new NotReadyError(undefined);
-      },
-    };
-
-    const snapshot = snapshotGridProps(props, new Set(["class"]));
-
-    expect(snapshot).toEqual({ rowData: [1, 2] });
-  });
-
-  it("real async memo: never-resolved → omitted; resolved → present; refetching → omitted via isPending, other props still flow; landed → present", async () => {
-    const tick = () => new Promise<void>((r) => setTimeout(r, 5));
+  /**
+   * A props object shaped like the compiler's (a getter per passed prop) over an async rowData
+   * whose promise is swapped per refetch, plus a sync `other` and an excluded `class`.
+   */
+  const asyncHarness = () => {
     let resolveGate!: (v: number) => void;
     let gate = new Promise<number>((r) => (resolveGate = r));
     const [ver, setVer] = createSignal(0);
     const [other, setOther] = createSignal("static");
-    const snapshots: Record<string, unknown>[] = [];
+    const diffs: Record<string, unknown>[] = [];
+    let guards!: GridPropGuards;
     const dispose = createRoot((d) => {
       const data = createMemo(() => {
         ver();
         return gate;
       });
-      // the prop object shape the compiler produces: a getter per passed prop
       const props = {
         get rowData() {
           return data();
@@ -134,46 +53,139 @@ describe("asyncProps (per-key isolation)", () => {
         get other() {
           return other();
         },
+        class: "excluded",
       };
+      guards = createGridPropGuards(props, new Set(["class"]));
       createEffect(
-        () => snapshotGridProps(props, new Set()),
-        (snap) => {
-          snapshots.push(snap);
+        () => snapshotGridProps(guards).values,
+        (values) => {
+          diffs.push(values);
         },
       );
       return d;
     });
-    flush();
-    await tick();
-    // uninitialized: rowData absent, other props not stalled
-    expect(snapshots.at(-1)).toEqual({ other: "static" });
+    return {
+      diffs,
+      creation: () => snapshotGridProps(guards, true),
+      setOther,
+      resolve: (v: number) => resolveGate(v),
+      refetch: () => {
+        gate = new Promise<number>((r) => (resolveGate = r));
+        setVer((v) => v + 1);
+      },
+      dispose,
+    };
+  };
 
-    resolveGate(1);
-    await tick();
-    flush();
-    await tick();
-    expect(snapshots.at(-1)).toEqual({ rowData: 1, other: "static" });
+  it("real async memo, prop-diff read: never-loaded → omitted; landed → present; refetching → omitted, other props still flow; landed → present — with no dev warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn");
+    const h = asyncHarness();
+    try {
+      flush();
+      await tick();
+      // never loaded: rowData absent, other props not stalled; the excluded key never appears
+      expect(h.diffs.at(-1)).toEqual({ other: "static" });
+      h.setOther("first-load");
+      flush();
+      await tick();
+      expect(h.diffs.at(-1)).toEqual({ other: "first-load" });
 
-    // refetch: dependency change re-asks; while pending the key is absent — neither the held
-    // previous value nor anything else (SWR: no change is applied)
-    gate = new Promise<number>((r) => (resolveGate = r));
-    setVer(1);
-    flush();
-    await tick();
-    expect(snapshots.at(-1)).toEqual({ other: "static" });
+      h.resolve(1);
+      await tick();
+      flush();
+      await tick();
+      expect(h.diffs.at(-1)).toEqual({ rowData: 1, other: "first-load" });
 
-    // the pending key does not stall the others: a change lands while rowData is still absent
-    setOther("changed");
-    flush();
-    await tick();
-    expect(snapshots.at(-1)).toEqual({ other: "changed" });
+      // refetch: while pending the key is absent — neither the held previous value nor
+      // anything else (SWR: no change is applied)
+      h.refetch();
+      flush();
+      await tick();
+      expect(h.diffs.at(-1)).toEqual({ other: "first-load" });
 
-    // the landing re-runs the compute with the new value
-    resolveGate(2);
-    await tick();
-    flush();
-    await tick();
-    expect(snapshots.at(-1)).toEqual({ rowData: 2, other: "changed" });
+      // the pending key does not stall the others
+      h.setOther("changed");
+      flush();
+      await tick();
+      expect(h.diffs.at(-1)).toEqual({ other: "changed" });
+
+      h.resolve(2);
+      await tick();
+      flush();
+      await tick();
+      expect(h.diffs.at(-1)).toEqual({ rowData: 2, other: "changed" });
+
+      // the guards read catch-free: Solid's dev build has nothing to report (CAUGHT_REACTIVE_READ
+      // on rc.21 before solidjs/solid#4789's loadingValue shape)
+      expect(warnSpy.mock.calls.map(([m]) => String(m))).toEqual([]);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("creation read (untracked): never-loaded → omitted without throwing; refetching → previous value held; keys list every guarded key", async () => {
+    const h = asyncHarness();
+    try {
+      flush();
+      await tick();
+      expect(h.creation()).toEqual({ values: { other: "static" }, keys: ["rowData", "other"] });
+
+      h.resolve(1);
+      await tick();
+      flush();
+      await tick();
+      h.refetch();
+      flush();
+      await tick();
+      // grid creation during a refetch boots with the last landed value, not an empty grid
+      expect(h.creation().values).toEqual({ rowData: 1, other: "static" });
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("a key added to or dropped from a spread props object gains or loses its guard", () => {
+    const [extra, setExtra] = createStore<Record<string, unknown>>({});
+    const keyLists: string[][] = [];
+    const dispose = createRoot((d) => {
+      const props = merge({ rowData: [1] }, extra);
+      const guards = createGridPropGuards(props, new Set());
+      createEffect(
+        () => snapshotGridProps(guards),
+        ({ values, keys }) => {
+          keyLists.push(keys);
+          expect(Object.keys(values)).toEqual(keys);
+        },
+      );
+      return d;
+    });
+    try {
+      flush();
+      setExtra((s) => {
+        s.pagination = true;
+      });
+      flush();
+      setExtra((s) => {
+        delete s.pagination;
+      });
+      flush();
+      expect(keyLists).toEqual([["rowData"], ["rowData", "pagination"], ["rowData"]]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("a prop getter that throws a real error surfaces it (user bugs are not read as absent)", () => {
+    const props = {
+      get rowData(): unknown {
+        throw new Error("boom");
+      },
+    };
+    const dispose = createRoot((d) => {
+      const guards = createGridPropGuards(props, new Set());
+      expect(() => snapshotGridProps(guards, true)).toThrow("boom");
+      return d;
+    });
     dispose();
   });
 

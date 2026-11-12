@@ -3,9 +3,9 @@
 // scope (a prop that stops following changes after mount), a signal write from an owned scope,
 // a caught not-ready read, a list recreating rows for equal items, a graph that outlives what
 // created it — and, with attribution on, the cost checks behind them. Anything it names in
-// these scenarios is a finding, not noise. The one expected diagnostic is pinned on its own:
-// a never-loaded async prop's CAUGHT_REACTIVE_READ (src/core/asyncProps.ts verdict,
-// solidjs/solid#4789). Captured with @solidjs/diagnostics in the dev build (browser project).
+// these scenarios is a finding, not noise. That includes a never-loaded async prop: the prop
+// guards read it catch-free (src/core/asyncProps.ts verdict, solidjs/solid#4789). Captured with
+// @solidjs/diagnostics in the dev build (browser project).
 import type { DiagnosticsArtifact } from "@solidjs/diagnostics";
 import { captureArtifact, expectRerunBudget } from "@solidjs/diagnostics";
 import { render } from "@solidjs/testing-library";
@@ -223,7 +223,7 @@ describe("runtime diagnostics (dev build)", () => {
     expect(overlayShown).toBe(true);
   });
 
-  it("a never-loaded async rowData emits exactly the known CAUGHT_REACTIVE_READ, then loads", async () => {
+  it("a never-loaded async rowData emits no diagnostics, then loads", async () => {
     let resolve!: (rows: Row[]) => void;
     const promise = new Promise<Row[]>((r) => (resolve = r));
     let api: GridApi<Row> | undefined;
@@ -244,8 +244,7 @@ describe("runtime diagnostics (dev build)", () => {
       resolve(makeRows(30));
       await waitFor(() => api != null && grid.cellCount() > 20);
     });
-    // the owner is the grid's named prop-sync effect, so the warning a user sees points at it
-    expect(seen).toEqual(["CAUGHT_REACTIVE_READ: AgGridSolid.gridOptions / rowData"]);
+    expect(seen).toEqual([]);
     expect(api!.getDisplayedRowCount()).toBe(30);
   });
 });

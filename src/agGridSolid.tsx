@@ -16,7 +16,13 @@ import {
 } from "solid-js";
 
 import { LicenseContext, ModulesContext } from "./agGridProvider";
-import { extractGridPropertyChanges, readPropIfReady, snapshotGridProps } from "./core/asyncProps";
+import {
+  ABSENT,
+  createGridPropGuards,
+  extractGridPropertyChanges,
+  guardProp,
+  snapshotGridProps,
+} from "./core/asyncProps";
 import { bootGrid } from "./core/gridBoot";
 import GridPortals from "./core/gridPortals";
 import { PortalManager } from "./core/portalManager";
@@ -193,6 +199,11 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
   const excludeProps = rowStore
     ? new Set([...excludeSolidCompProps, "rowData"])
     : excludeSolidCompProps;
+  // per-key isolation for async props (Open question 9 verdict — see src/core/asyncProps.ts):
+  // every grid-option key, and the excluded gridOptions prop, reads through a guard memo whose
+  // never-loaded value is ABSENT. Both the creation snapshot and the prop-diff effect read them.
+  const propGuards = createGridPropGuards(props, excludeProps);
+  const gridOptionsGuard = guardProp(props, "gridOptions");
 
   // reactive guard for GridComp: context exists and is alive (set once per component instance;
   // teardown unmounts the whole component, so isDestroyed is re-checked only on context change)
@@ -223,10 +234,9 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
     const modules: Module[] = [...(props.modules ?? []), ...(modulesFromContext?.() ?? [])];
     const licenseKey = licenseKeyFromContext();
 
-    // per-key isolation for async props (Open question 9 verdict — see src/core/asyncProps.ts):
-    // not-ready keys are absent from the creation snapshot and arrive later via the prop-diff
-    // effect
-    const initialProps = snapshotGridProps(props, excludeProps, true);
+    // not-ready async keys are absent from the creation snapshot and arrive later via the
+    // prop-diff effect
+    const initialProps = snapshotGridProps(propGuards, true).values;
     // ADAPTER GUARDRAIL (API RULING, .agent/planning/STATUS.md): rowData is the VALUE protocol
     // — you hand snapshots, identity-diffed. A store proxy handed here is read once; mutating
     // the store never changes the proxy's identity, so mutations NEVER reach the grid. The
@@ -239,8 +249,7 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
         "AG Grid: `rowData` received a Solid store proxy — `rowData` is snapshot once and identity-diffed, so store mutations will NOT update the grid. Pass plain (or async) values to `rowData`, or use the `rowStore` prop for live store projection.",
       );
     }
-    const gridOptionsHolder: { gridOptions?: GridOptions<TData> } = {};
-    readPropIfReady(props, "gridOptions", gridOptionsHolder, true);
+    const gridOptions = gridOptionsGuard();
 
     if (rowStore && !rowStoreModelMismatch) {
       // seed rowData from the adapter's creation-time snapshot — the exact baseline its
@@ -265,7 +274,7 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
       modules,
       licenseKey,
       initialProps,
-      gridOptions: gridOptionsHolder.gridOptions,
+      gridOptions: gridOptions === ABSENT ? undefined : gridOptions,
       portalManager,
       frameworkOverrides,
       // grid configuration fixed for the grid's lifetime, read once at boot (like `modules`)
@@ -300,21 +309,20 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
       return;
     }
     // creation runs one microtask off onSettled's scope: reading a pending async prop INSIDE
-    // onSettled logs PENDING_ASYNC_FORBIDDEN_SCOPE (dev) even through latest(), because the
-    // warning fires at read time in the forbidden scope. In a plain microtask a pending read
-    // throws a not-ready error (latest() on a never-resolved source, in every scope since
-    // rc.9) — the per-key snapshot handles it as "absent" — so the async-rowData boot path
-    // produces zero console noise, contract unchanged (pinned by browser tests).
+    // onSettled logs PENDING_ASYNC_FORBIDDEN_SCOPE (dev) at read time. The creation snapshot
+    // reads the prop guards untracked in a plain microtask: a never-loaded key reads ABSENT and
+    // is left out, so the async-rowData boot path produces zero console noise (pinned by
+    // browser tests).
     queueMicrotask(() => untrack(createGrid));
   });
 
   createEffect(
-    // compute: read every grid-option prop key so each one is tracked, and return the snapshot.
-    // Not-ready async keys are omitted per-key (Open question 9 verdict — see
-    // src/core/asyncProps.ts): the tracked read already subscribed this compute, so it re-runs
-    // — and the key diffs in — on resolve. `keys` is the props object's own key list (one
-    // Object.keys, already tracked by the snapshot's) — pending keys included.
-    () => ({ values: snapshotGridProps(props, excludeProps), keys: Object.keys(props) }),
+    // compute: read every grid-option guard so each key is tracked, and return the snapshot.
+    // Not-ready async keys are omitted per key (Open question 9 verdict — see
+    // src/core/asyncProps.ts): the guard read already subscribed this compute, so it re-runs
+    // — and the key diffs in — on resolve. `keys` lists every guarded key, pending ones
+    // included.
+    () => snapshotGridProps(propGuards),
     // apply: diff against the previous snapshot and route the changes through the ready queue
     (next, prev) => {
       if (!prev) {

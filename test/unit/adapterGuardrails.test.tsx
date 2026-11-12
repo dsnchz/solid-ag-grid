@@ -78,7 +78,7 @@ describe("rowData store-proxy guardrail (value protocol)", () => {
 
   it("stays silent for async-pending rowData (per-key isolation: the pending key is absent, never a proxy)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // never-resolving async source — the boot snapshot reads it via latest() and omits the key
+    // never-resolving async source — the boot snapshot reads its guard as ABSENT and omits the key
     const pending = new Promise<Row[]>(() => {});
     const Harness = () => {
       const asyncRows = createMemo(() => pending);
@@ -86,11 +86,9 @@ describe("rowData store-proxy guardrail (value protocol)", () => {
     };
     const { unmount } = render(() => <Harness />);
     await settle();
-    // the one dev warning a never-loaded async prop raises since rc.21: the prop-diff effect's
-    // narrow NotReadyError catch (src/core/asyncProps.ts verdict; solidjs/solid#4789). No other
-    // warning — in particular not the store-proxy guardrail
-    const warnings = warnSpy.mock.calls.map(([message]) => String(message));
-    expect(warnings.filter((m) => !m.startsWith("[CAUGHT_REACTIVE_READ]"))).toEqual([]);
+    // no warning at all: not the store-proxy guardrail, and no Solid dev diagnostic for the
+    // never-loaded read (the prop guards are catch-free; src/core/asyncProps.ts verdict)
+    expect(warnSpy.mock.calls.map(([message]) => String(message))).toEqual([]);
     unmount();
   });
 });

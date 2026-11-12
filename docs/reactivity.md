@@ -66,7 +66,6 @@ const rows = createMemo(() => fetchRows(query())); // async — returns a Promis
 
 - **Initial load:** the pending key is simply absent from the creation snapshot → the grid boots with no rows and shows its loading overlay (customizable via `loadingOverlayComponent` — a Solid component that can read your app signals).
 - **On resolve:** the tracked read already subscribed the prop-diff computation, so it re-runs and the data flows in as a normal option change.
-- **Dev console, Solid rc.21+:** while a never-loaded async prop is pending, Solid logs one `[CAUGHT_REACTIVE_READ]` warning per grid, naming the grid's prop-sync effect `AgGridSolid.gridOptions`. It is expected. On the first load the per-key guard (design note below) has to catch the read: Solid offers no non-throwing readiness probe for a source that has never produced a value. Behavior is as described above. A catch-free probe has been requested upstream ([solidjs/solid#4789](https://github.com/solidjs/solid/issues/4789)).
 
 ### Stale-while-revalidate refetches — a guaranteed contract
 
@@ -189,7 +188,7 @@ Reactive custom components (status panels, filters, tool panels, ...) receive **
 
 ## Why per-key isolation exists (design note)
 
-Internally, the component reads every grid-option prop inside one diffing computation. Solid 2.0 async semantics mean a pending read throws `NotReadyError` — if that propagated, **one** pending prop would suspend the whole computation and stall _all_ option updates. Instead each key is read through a per-key guard: not-ready keys are omitted from the snapshot (the tracked read has already subscribed, so resolution re-runs the diff and the key flows in as a normal change). Three user-visible behaviors fall out of this single decision:
+Internally, the component reads every grid-option prop inside one diffing computation. Solid 2.0 async semantics mean a pending read throws `NotReadyError` — if that propagated, **one** pending prop would suspend the whole computation and stall _all_ option updates. Instead each key is read through its own guard, a passthrough memo with a `loadingValue`: a never-loaded key reads as absent, a refetching key reports `isPending`, and both are omitted from the snapshot (the guard read has already subscribed, so resolution re-runs the diff and the key flows in as a normal change). Three user-visible behaviors fall out of this single decision:
 
 1. async `rowData` shows the loading overlay on first load (key absent at creation),
 2. refetches are stale-while-revalidate (key absent from the change snapshot → no change applied),

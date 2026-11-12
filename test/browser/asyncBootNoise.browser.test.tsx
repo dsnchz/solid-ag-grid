@@ -1,6 +1,6 @@
 // Pins the fix for the dogfooding MEDIUM finding: booting a grid with a pending async
 // prop must NOT log Solid's PENDING_ASYNC_FORBIDDEN_SCOPE dev warning (creation-time
-// snapshot reads go through latest(), bypassing the pending-link machinery), while the
+// snapshot reads go through the prop guards in a microtask off onSettled), while the
 // zero-ceremony async rowData contract still holds end to end.
 import { render } from "@solidjs/testing-library";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
