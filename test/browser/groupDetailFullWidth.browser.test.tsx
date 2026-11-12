@@ -258,8 +258,9 @@ describe("Full-width rows (browser)", () => {
 
     expect(row.textContent).toContain("FW(left): updated");
     const lanesAfter = [...row.querySelectorAll<HTMLElement>(".my-full-width")];
-    // same elements, refreshed in place lane by lane
-    expect(lanesAfter).toEqual(lanesBefore);
+    // the same element objects, refreshed in place lane by lane — no remount
+    expect(lanesAfter.length).toBe(lanesBefore.length);
+    lanesAfter.forEach((lane, i) => expect(lane, `lane ${i} remounted`).toBe(lanesBefore[i]));
 
     unmount();
   });

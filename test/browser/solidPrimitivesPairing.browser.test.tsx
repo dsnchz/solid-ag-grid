@@ -46,7 +46,12 @@ describe("pairing with @solid-primitives/resize-observer", () => {
       return (
         <div ref={setHost} style={{ width: `${width()}px`, height: "300px" }}>
           <AgGridSolid
-            columnDefs={[{ field: "a" }, { field: "b" }]}
+            // 2 x 100px: a sum that matches neither container width, so only a real fit lands
+            // the total on the grid body width
+            columnDefs={[
+              { field: "a", width: 100 },
+              { field: "b", width: 100 },
+            ]}
             rowData={[{ a: 1, b: 2 }]}
             headerHeight={headerHeight()}
             ref={(r) => (api = r.api)}
@@ -74,12 +79,21 @@ describe("pairing with @solid-primitives/resize-observer", () => {
       expect(headerHeightPx()).toBeLessThan(40);
     });
 
-    // columns re-fit into the shrunk container (sum of column widths ≈ new width)
+    // columns re-fit into the shrunk container: the total fills the grid body (the 400px
+    // container less the grid border), not the 200px they started at nor the 600px container
+    // they mounted in
+    const columnsTotal = () => api!.getColumnState().reduce((sum, col) => sum + col.width!, 0);
+    const bodyWidth = () => container.querySelector<HTMLElement>(".ag-root")!.clientWidth;
     await vi.waitFor(() => {
-      const widths = [...container.querySelectorAll<HTMLElement>(".ag-header-cell")].map(
-        (c) => c.offsetWidth,
-      );
-      expect(widths.reduce((a, w) => a + w, 0)).toBeLessThanOrEqual(400);
+      expect(bodyWidth()).toBeGreaterThan(390);
+      expect(bodyWidth()).toBeLessThanOrEqual(400);
+      expect(columnsTotal()).toBe(bodyWidth());
     });
+    // the header cells render the fitted widths
+    const headerTotal = [...container.querySelectorAll<HTMLElement>(".ag-header-cell")].reduce(
+      (sum, cell) => sum + cell.offsetWidth,
+      0,
+    );
+    expect(headerTotal).toBe(columnsTotal());
   });
 });

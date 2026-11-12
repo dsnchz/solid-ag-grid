@@ -114,11 +114,12 @@ describe("asyncProps (per-key isolation)", () => {
     expect(snapshot).toEqual({ rowData: [1, 2] });
   });
 
-  it("real async memo: never-resolved → omitted; resolved → present; refetching → omitted via isPending; landed → present", async () => {
+  it("real async memo: never-resolved → omitted; resolved → present; refetching → omitted via isPending, other props still flow; landed → present", async () => {
     const tick = () => new Promise<void>((r) => setTimeout(r, 5));
-    let resolveFirst!: (v: number) => void;
-    let gate = new Promise<number>((r) => (resolveFirst = r));
+    let resolveGate!: (v: number) => void;
+    let gate = new Promise<number>((r) => (resolveGate = r));
     const [ver, setVer] = createSignal(0);
+    const [other, setOther] = createSignal("static");
     const snapshots: Record<string, unknown>[] = [];
     const dispose = createRoot((d) => {
       const data = createMemo(() => {
@@ -131,7 +132,7 @@ describe("asyncProps (per-key isolation)", () => {
           return data();
         },
         get other() {
-          return "static";
+          return other();
         },
       };
       createEffect(
@@ -147,24 +148,32 @@ describe("asyncProps (per-key isolation)", () => {
     // uninitialized: rowData absent, other props not stalled
     expect(snapshots.at(-1)).toEqual({ other: "static" });
 
-    resolveFirst(1);
+    resolveGate(1);
     await tick();
     flush();
     await tick();
     expect(snapshots.at(-1)).toEqual({ rowData: 1, other: "static" });
 
-    // refetch: dependency change re-asks; while pending the key is absent (SWR: no change is
-    // applied), and the landing re-runs the compute with the new value
-    gate = new Promise<number>((r) => setTimeout(() => r(2), 20));
+    // refetch: dependency change re-asks; while pending the key is absent — neither the held
+    // previous value nor anything else (SWR: no change is applied)
+    gate = new Promise<number>((r) => (resolveGate = r));
     setVer(1);
     flush();
     await tick();
-    const duringRefetch = snapshots.at(-1)!;
-    expect("rowData" in duringRefetch && duringRefetch.rowData === 2).toBe(false);
-    for (let i = 0; i < 8; i++) await tick();
+    expect(snapshots.at(-1)).toEqual({ other: "static" });
+
+    // the pending key does not stall the others: a change lands while rowData is still absent
+    setOther("changed");
     flush();
     await tick();
-    expect(snapshots.at(-1)).toEqual({ rowData: 2, other: "static" });
+    expect(snapshots.at(-1)).toEqual({ other: "changed" });
+
+    // the landing re-runs the compute with the new value
+    resolveGate(2);
+    await tick();
+    flush();
+    await tick();
+    expect(snapshots.at(-1)).toEqual({ rowData: 2, other: "changed" });
     dispose();
   });
 

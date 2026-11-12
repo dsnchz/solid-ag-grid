@@ -218,19 +218,24 @@ describe("DetailCellRenderer (jsdom shell contract, mocked detailCellRendererCtr
     };
   };
 
-  it("renders ag-details-row, inits the ctrl, and routes the refresh handle to ctrl.refresh()", () => {
-    const { container, ctrl, handle, unmount } = setup();
+  it("renders ag-details-row, inits the ctrl, returns ctrl.refresh()'s verdict from the handle, and destroys the ctrl on unmount", () => {
+    const { container, ctrl, handle, destroyed, unmount } = setup();
 
     const row = container.querySelector<HTMLElement>(".ag-details-row")!;
     expect(row).not.toBeNull();
     expect(ctrl.init).toHaveBeenCalledTimes(1);
     expect((ctrl.init as ReturnType<typeof vi.fn>).mock.calls[0]![0].getGui()).toBe(row);
 
+    // CellComp remounts the renderer unless refresh() returns exactly true, so the handle must
+    // hand back the ctrl's verdict in both directions (false = recreate, true = kept in place)
+    vi.mocked(ctrl.refresh).mockReturnValueOnce(false);
+    expect(handle()!.refresh()).toBe(false);
+    vi.mocked(ctrl.refresh).mockReturnValueOnce(true);
     expect(handle()!.refresh()).toBe(true);
-    expect(ctrl.refresh).toHaveBeenCalledTimes(1);
+    expect(ctrl.refresh).toHaveBeenCalledTimes(2);
 
     unmount();
-    expect((ctrl.destroy as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(0);
+    expect(destroyed).toContain(ctrl);
   });
 
   it("setDetailGrid + setRowData mount a real nested AgGridSolid that registers with the master", async () => {

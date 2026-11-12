@@ -1,11 +1,12 @@
 import { render } from "@solidjs/testing-library";
-import type { ColDef, GridParams, Module } from "ag-grid-community";
+import type { ColDef, GridApi, IDatasource, Module } from "ag-grid-community";
 import {
   AllCommunityModule,
   ClientSideRowModelModule,
+  CsvExportModule,
   getGridApi,
-  GridCoreCreator,
   InfiniteRowModelModule,
+  ValidationModule,
 } from "ag-grid-community";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,18 +27,27 @@ const rowData: CarRow[] = [{ make: "Toyota", price: 35000 }];
 // grid creation runs in onSettled + GridComp mounts on the following flush
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/** Spies on GridCoreCreator.create to capture the GridParams handed to the core. */
-const captureGridParams = () => {
-  const captured: GridParams[] = [];
-  const original = GridCoreCreator.prototype.create;
-  vi.spyOn(GridCoreCreator.prototype, "create").mockImplementation(function (
-    this: GridCoreCreator,
-    ...args: Parameters<typeof original>
-  ) {
-    captured.push(args[5] as GridParams);
-    return original.apply(this, args);
-  });
-  return captured;
+// AG Grid batches missing-module reports and logs them 50ms after the first one
+const flushMissingModuleReports = () => new Promise<void>((resolve) => setTimeout(resolve, 60));
+
+/** Infinite-model datasource over `rowData` — only loads if InfiniteRowModelModule is present. */
+const datasource: IDatasource = {
+  getRows: (p) => p.successCallback(rowData.slice(p.startRow, p.endRow), rowData.length),
+};
+
+/** The api of the grid whose outermost div is the first child of `selector`'s element. */
+const apiIn = (container: HTMLElement, selector: string): GridApi<CarRow> | undefined =>
+  getGridApi(container.querySelector(selector)!.firstElementChild as HTMLDivElement);
+
+/** Waits until the grid under `selector` renders the datasource's row (boot + block load). */
+const waitForDatasourceRow = async (container: HTMLElement, selector: string) => {
+  const start = Date.now();
+  while (container.querySelector(`${selector} .ag-cell[col-id="make"]`)?.textContent !== "Toyota") {
+    if (Date.now() - start > 2000) {
+      throw new Error(`no datasource row rendered in ${selector}`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
 };
 
 describe("AgGridProvider (jsdom)", () => {
@@ -89,66 +99,95 @@ describe("AgGridProvider (jsdom)", () => {
     expect(api!.isDestroyed()).toBe(false);
   });
 
-  it("merges the modules prop with provider modules (prop first) and both grids share provider modules", async () => {
-    const captured = captureGridParams();
-
+  // capabilities (not module arrays) are asserted: AG Grid dedupes and registers modules per
+  // grid, so merge order has no observable effect — what matters is that each grid ends up
+  // with every source's modules and no one else's
+  it("a grid gets its modules prop on top of the provider's; a sibling without the prop gets only the provider's", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const { container } = render(() => (
-      <AgGridProvider modules={[AllCommunityModule]}>
-        <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
-        <AgGridSolid
-          modules={[ClientSideRowModelModule]}
-          columnDefs={columnDefs}
-          rowData={rowData}
-        />
+      <AgGridProvider modules={[InfiniteRowModelModule]}>
+        {/* the prop grid comes first: a merge that leaked into the shared provider list would
+            reach the sibling booting after it */}
+        <div class="with-prop">
+          <AgGridSolid
+            modules={[CsvExportModule]}
+            rowModelType="infinite"
+            columnDefs={columnDefs}
+            datasource={datasource}
+          />
+        </div>
+        <div class="provider-only">
+          <AgGridSolid rowModelType="infinite" columnDefs={columnDefs} datasource={datasource} />
+        </div>
       </AgGridProvider>
     ));
-    await settle();
 
-    expect(captured).toHaveLength(2);
-    // sibling 1: provider modules only
-    expect(captured[0]!.modules).toEqual([AllCommunityModule]);
-    // sibling 2: props.modules first, then provider modules (parity with React's merge order)
-    expect(captured[1]!.modules).toEqual([ClientSideRowModelModule, AllCommunityModule]);
+    // both siblings boot the infinite row model and load from the datasource: provider modules
+    await waitForDatasourceRow(container, ".with-prop");
+    await waitForDatasourceRow(container, ".provider-only");
 
-    // both siblings actually booted
-    const outers = container.querySelectorAll(".ag-root-wrapper");
-    expect(outers).toHaveLength(2);
+    // the prop's CsvExportModule works on its own grid ...
+    expect(apiIn(container, ".with-prop")!.getDataAsCsv()).toContain('"Toyota","35000"');
+    // ... and stays scoped to it: the provider-only sibling has no CSV export
+    expect(apiIn(container, ".provider-only")!.getDataAsCsv()).toBeUndefined();
+    // drain AG Grid's batched missing-module report while console.error is still muted
+    await flushMissingModuleReports();
   });
 
-  it("nested providers accumulate parent + own modules (parent first)", async () => {
-    const captured = captureGridParams();
-
-    render(() => (
-      <AgGridProvider modules={[ClientSideRowModelModule]}>
-        <AgGridProvider modules={[AllCommunityModule]}>
-          <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
+  it("nested providers accumulate parent + own modules", async () => {
+    const { container } = render(() => (
+      <AgGridProvider modules={[InfiniteRowModelModule]}>
+        <AgGridProvider modules={[CsvExportModule]}>
+          <div class="nested">
+            <AgGridSolid rowModelType="infinite" columnDefs={columnDefs} datasource={datasource} />
+          </div>
         </AgGridProvider>
       </AgGridProvider>
     ));
-    await settle();
 
-    expect(captured).toHaveLength(1);
-    expect(captured[0]!.modules).toEqual([ClientSideRowModelModule, AllCommunityModule]);
+    // the parent's InfiniteRowModelModule boots the row model and loads the datasource ...
+    await waitForDatasourceRow(container, ".nested");
+    // ... and the inner provider's CsvExportModule exports it
+    expect(apiIn(container, ".nested")!.getDataAsCsv()).toContain('"Toyota","35000"');
   });
 
-  it("passes usesAgGridProvider to the framework overrides (true under provider, false without)", async () => {
-    const captured = captureGridParams();
-
-    // sequential renders keep the capture order deterministic (sibling onSettled order is not)
-    render(() => (
-      <AgGridProvider modules={[AllCommunityModule]}>
-        <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
-      </AgGridProvider>
+  it("missing-module guidance shows the AgGridProvider form under a provider and ModuleRegistry without one", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // ValidationModule makes AG Grid log the full guidance text instead of a docs link
+    const modules = [ClientSideRowModelModule, ValidationModule];
+    const { container } = render(() => (
+      <>
+        <div class="under-provider">
+          <AgGridProvider modules={modules}>
+            <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
+          </AgGridProvider>
+        </div>
+        <div class="standalone">
+          <AgGridSolid modules={modules} columnDefs={columnDefs} rowData={rowData} />
+        </div>
+      </>
     ));
     await settle();
-    render(() => (
-      <AgGridSolid modules={[AllCommunityModule]} columnDefs={columnDefs} rowData={rowData} />
-    ));
-    await settle();
 
-    expect(captured).toHaveLength(2);
-    expect(captured[0]!.frameworkOverrides!.usesAgGridProvider).toBe(true);
-    expect(captured[1]!.frameworkOverrides!.usesAgGridProvider).toBe(false);
+    // CsvExportModule is registered for neither grid
+    const guidanceFor = async (api: GridApi<CarRow>) => {
+      errorSpy.mockClear();
+      expect(api.getDataAsCsv()).toBeUndefined();
+      await flushMissingModuleReports();
+      const logged = errorSpy.mock.calls.flat().join("\n");
+      expect(logged).toContain(
+        `CsvExportModule\` is not registered for gridId: ${api.getGridId()}`,
+      );
+      return logged;
+    };
+
+    const providerGuidance = await guidanceFor(apiIn(container, ".under-provider")!);
+    expect(providerGuidance).toContain("<AgGridProvider modules={modules}>");
+    expect(providerGuidance).not.toContain("ModuleRegistry.registerModules");
+
+    const standaloneGuidance = await guidanceFor(apiIn(container, ".standalone")!);
+    expect(standaloneGuidance).toContain("ModuleRegistry.registerModules([ CsvExportModule ]);");
+    expect(standaloneGuidance).not.toContain("<AgGridProvider");
   });
 
   it("provider licenseKey reaches _findEnterpriseCoreModule().setLicenseKey over the MERGED module list", async () => {
@@ -189,5 +228,26 @@ describe("AgGridProvider (jsdom)", () => {
     await settle();
 
     expect(setLicenseKey).toHaveBeenCalledWith("PARENT_KEY");
+  });
+
+  it("nested provider's own licenseKey takes precedence over the parent's", async () => {
+    const setLicenseKey = vi.fn();
+    const fakeEnterpriseCore = {
+      moduleName: "FakeEnterpriseCoreModule",
+      version: "36.0.1",
+      setLicenseKey,
+    } as unknown as Module;
+
+    render(() => (
+      <AgGridProvider modules={[AllCommunityModule]} licenseKey="PARENT_KEY">
+        <AgGridProvider modules={[fakeEnterpriseCore]} licenseKey="CHILD_KEY">
+          <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
+        </AgGridProvider>
+      </AgGridProvider>
+    ));
+    await settle();
+
+    // set once, with the closest provider's key — the parent's never reaches the license manager
+    expect(setLicenseKey.mock.calls).toEqual([["CHILD_KEY"]]);
   });
 });

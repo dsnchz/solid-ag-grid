@@ -131,7 +131,8 @@ describe("AgGridSolid entry (jsdom)", () => {
     expect(ref.api.isDestroyed()).toBe(false);
   });
 
-  it("destroys the grid context on unmount", async () => {
+  it("destroys the grid context on unmount without console errors", async () => {
+    const errorSpy = vi.spyOn(console, "error");
     const { container, unmount } = render(() => (
       <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
     ));
@@ -142,5 +143,10 @@ describe("AgGridSolid entry (jsdom)", () => {
 
     unmount();
     expect(api.isDestroyed()).toBe(true);
+    // a throw inside the shell's effects (GridComp/TabGuardComp/body ctrl wiring) never reaches
+    // the test: Solid halts reactivity and reports it through console.error, while the context
+    // still destroys — so a clean mount + teardown is only provable on the console
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

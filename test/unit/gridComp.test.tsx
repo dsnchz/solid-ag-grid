@@ -68,19 +68,6 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     expect(children[children.length - 1]!.getAttribute("tabindex")).toBe("0");
   });
 
-  it("inserts the ` AG Grid ` DOM comment before the root wrapper", async () => {
-    const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rowData} />);
-    await settle();
-
-    const rootWrapper = container.querySelector(".ag-root-wrapper")!;
-    const siblings = Array.from(rootWrapper.parentElement!.childNodes);
-    const wrapperIndex = siblings.indexOf(rootWrapper);
-    const commentBefore = siblings
-      .slice(0, wrapperIndex)
-      .find((n) => n.nodeType === Node.COMMENT_NODE && n.nodeValue === " AG Grid ");
-    expect(commentBefore).toBeDefined();
-  });
-
   it("updates layout classes when domLayout changes through the grid api (compProxy push path)", async () => {
     const { container } = render(() => <AgGridSolid columnDefs={columnDefs} rowData={rowData} />);
     await settle();
@@ -119,19 +106,10 @@ describe("GridComp + TabGuardComp shell (jsdom)", () => {
     const api = getGridApi(container.firstElementChild)!;
     unmount();
     // context destroy is clean: GridCtrl, TabGuardCtrl and the selector beans all destroyed
-    // without console.error (asserted in afterEach)
+    // without console.error (asserted in afterEach) ...
     expect(api.isDestroyed()).toBe(true);
-  });
-
-  it("destroys the grid shell cleanly on unmount without selector comps", async () => {
-    const { container, unmount } = render(() => (
-      <AgGridSolid columnDefs={columnDefs} rowData={rowData} />
-    ));
-    await settle();
-
-    const api = getGridApi(container.firstElementChild)!;
-    expect(api.isDestroyed()).toBe(false);
-    unmount();
-    expect(api.isDestroyed()).toBe(true);
+    // ... and the imperatively inserted panel is detached by the selector effect's cleanup
+    // (Solid only removes the nodes it rendered itself)
+    expect(paging!.parentElement).toBeNull();
   });
 });

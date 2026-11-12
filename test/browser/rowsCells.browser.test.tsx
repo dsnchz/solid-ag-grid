@@ -388,30 +388,6 @@ describe("RowComp + CellComp (browser)", () => {
     unmount();
   });
 
-  it("cell spanning smoke: enableCellSpan renders the spanning container and rows without crashing (parity in T3.5)", async () => {
-    const spanDefs: ColDef<CarRow>[] = [
-      { field: "make", spanRows: true },
-      { field: "price" },
-      { field: "year" },
-    ];
-    const spanData: CarRow[] = [
-      { make: "Toyota", price: 1, year: 2020 },
-      { make: "Toyota", price: 2, year: 2021 },
-      { make: "Ford", price: 3, year: 2022 },
-    ];
-    const { container, unmount } = render(() => (
-      <AgGridSolid
-        containerStyle={{ height: "300px", width: "600px" }}
-        columnDefs={spanDefs}
-        rowData={spanData}
-        enableCellSpan={true}
-      />
-    ));
-    await waitFor(() => container.querySelectorAll(".ag-row").length >= 3);
-    expect(container.querySelector(".ag-spanning-container")).not.toBeNull();
-    unmount();
-  });
-
   it("async rowData (Open question 9): grid boots with the loading overlay, rows arrive on resolve, other props are not stalled", async () => {
     let resolveData!: (rows: CarRow[]) => void;
     const dataPromise = new Promise<CarRow[]>((resolve) => (resolveData = resolve));

@@ -15,7 +15,8 @@ import type {
   IFilterParams,
 } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
-import { describe, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import type {
@@ -108,6 +109,24 @@ class VanillaMakeFilter implements IFilter {
 }
 
 describe("Reactive custom components (browser)", () => {
+  // Every component in this file must take the reactive path. AG Grid prints the deprecated
+  // non-reactive path's warning #231 once per page (warnings are deduplicated by text), so a
+  // check inside one test only works if that test triggers it first: the spy spans the file and
+  // each test checks its own window (clearMocks resets the history between tests).
+  let warnSpy: MockInstance<typeof console.warn>;
+  beforeAll(() => {
+    warnSpy = vi.spyOn(console, "warn");
+  });
+  afterEach(() => {
+    const deprecated = warnSpy.mock.calls.filter((call) =>
+      call.some((arg) => typeof arg === "string" && /warning #231\b/.test(arg)),
+    );
+    expect(deprecated).toEqual([]);
+  });
+  afterAll(() => {
+    warnSpy.mockRestore();
+  });
+
   it("parity: reactive Solid filter (useGridFilter + onModelChange) filters to the same rows as an equivalent vanilla JS filter; model roundtrips; props push without remount; getInstance yields the user handle", async () => {
     type FilterHandle = { marker: string };
     const SolidMakeFilter = (
@@ -190,8 +209,7 @@ describe("Reactive custom components (browser)", () => {
     vanilla.destroy();
   });
 
-  it("custom loading + noRows overlays run through the reactive wrapper: no deprecation warning, toggling `loading` swaps them live", async () => {
-    const warnSpy = vi.spyOn(console, "warn");
+  it("custom loading + noRows overlays run through the reactive wrapper: toggling `loading` swaps them live", async () => {
     const SolidLoading = (props: CustomLoadingOverlayProps<CarRow>) => (
       <div class="solid-reactive-loading">{`loading (api=${typeof props.api})`}</div>
     );
@@ -221,12 +239,6 @@ describe("Reactive custom components (browser)", () => {
     solid.api()!.setGridOption("loading", true);
     await waitFor(() => solid.container.querySelector(".solid-reactive-loading") != null);
 
-    // reactive path taken → no "reactiveCustomComponents" deprecation warning (error #231)
-    const reactiveWarnings = warnSpy.mock.calls.filter((call) =>
-      call.some((arg) => typeof arg === "string" && arg.includes("reactiveCustomComponents")),
-    );
-    expect(reactiveWarnings).toEqual([]);
-    warnSpy.mockRestore();
     solid.unmount();
   });
 

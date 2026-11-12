@@ -26,6 +26,15 @@ const buildData = () => {
   return { columnDefs: fields.map((field) => ({ field, width: 120 })), rowData: data };
 };
 
+/** Rendered viewport content, `row-index:col-id` → cell text: what both renderers must paint. */
+const renderedContent = (host: HTMLElement) =>
+  new Map(
+    [...host.querySelectorAll(".ag-row .ag-cell")].map((cell) => [
+      `${cell.closest(".ag-row")!.getAttribute("row-index")}:${cell.getAttribute("col-id")}`,
+      cell.textContent,
+    ]),
+  );
+
 type Profile = {
   nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[];
   samples: number[];
@@ -80,9 +89,10 @@ async function profiled(renderer: "solid" | "vanilla") {
     cells: host.querySelectorAll(".ag-cell").length,
     rows: host.querySelectorAll(".ag-row").length,
   };
+  const content = renderedContent(host);
   timings.api.destroy?.();
   host.remove();
-  return { timings, profile, counts };
+  return { timings, profile, counts, content };
 }
 
 function aggregate(profile: Profile) {
@@ -110,7 +120,7 @@ function aggregate(profile: Profile) {
 const ms = (us: number) => (us / 1000).toFixed(1);
 
 describe("initial render CPU profile (diagnostic)", () => {
-  it("1k x 10, viewport mount phase: Solid vs vanilla self time by bucket and function", async () => {
+  it("1k x 10, viewport mount phase: Solid vs vanilla self time by bucket and function; same painted content", async () => {
     // warmup both, then profile each twice; report the second
     for (const r of ["solid", "vanilla"] as const) {
       const host = document.createElement("div");
@@ -121,6 +131,7 @@ describe("initial render CPU profile (diagnostic)", () => {
     }
     const report: string[] = [];
     const N = 10;
+    const content: Partial<Record<"solid" | "vanilla", Map<string, string | null>>> = {};
     for (const renderer of ["solid", "vanilla"] as const) {
       const buckets = new Map<string, number>();
       const fns = new Map<string, number>();
@@ -129,7 +140,8 @@ describe("initial render CPU profile (diagnostic)", () => {
       let cells = 0;
       let rows = 0;
       for (let i = 0; i < N; i++) {
-        const { timings, profile, counts } = await profiled(renderer);
+        const { timings, profile, counts, content: painted } = await profiled(renderer);
+        content[renderer] = painted;
         const a = aggregate(profile);
         total += a.total;
         wall += timings.tCell;
@@ -151,6 +163,8 @@ describe("initial render CPU profile (diagnostic)", () => {
       }
     }
     console.warn("PROFILE" + report.join("\n"));
-    expect(true).toBe(true);
+    // the profiled mounts painted the same viewport: identical cell set and text per renderer
+    expect(content.solid!.size).toBeGreaterThan(0);
+    expect(content.solid).toEqual(content.vanilla);
   }, 300_000);
 });

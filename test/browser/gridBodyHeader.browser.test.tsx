@@ -309,7 +309,7 @@ describe("GridBodyComp + header shell (browser)", () => {
     unmount();
   });
 
-  it("resizes a column by dragging the header resize handle", async () => {
+  it("resizes a column by exactly the header resize handle's drag distance", async () => {
     let apiRef: AgGridSolidRef<CarRow> | undefined;
     const { container, unmount } = render(() => (
       <AgGridSolid
@@ -344,23 +344,23 @@ describe("GridBodyComp + header shell (browser)", () => {
         }),
       );
 
+    const dragDistance = 60;
     mouse(handle, "mousedown", startX);
-    // the drag service starts dragging only past its px threshold, so move in steps
+    // move in steps: every intermediate move must keep feeding the same drag
     mouse(document, "mousemove", startX + 10);
-    mouse(document, "mousemove", startX + 60);
-    mouse(document, "mouseup", startX + 60);
+    mouse(document, "mousemove", startX + dragDistance);
+    mouse(document, "mouseup", startX + dragDistance);
     await settle();
 
-    await waitFor(() => {
-      const width = apiRef!.api.getColumnState().find((s) => s.colId === "make")!.width!;
-      return width > startWidth;
-    });
-    const endWidth = apiRef!.api.getColumnState().find((s) => s.colId === "make")!.width!;
-    expect(endWidth).toBeGreaterThan(startWidth);
+    const makeWidth = () => apiRef!.api.getColumnState().find((s) => s.colId === "make")!.width!;
+    await waitFor(() => makeWidth() !== startWidth);
+    await settle();
+    // the column grows by the full drag distance — not a partial step, not a reset
+    expect(makeWidth()).toBe(startWidth + dragDistance);
     // the header cell element tracks the new width
     const headerWidth = container.querySelector<HTMLElement>('.ag-header-cell[col-id="make"]')!
       .style.width;
-    expect(Number.parseFloat(headerWidth)).toBeCloseTo(endWidth, 0);
+    expect(Number.parseFloat(headerWidth)).toBe(startWidth + dragDistance);
 
     unmount();
   });

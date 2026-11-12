@@ -330,20 +330,43 @@ describe("structural delta (unchanged rows do no heavy work)", () => {
     dispose();
   });
 
-  it("remove then re-add of the SAME row object emits a fresh add (WeakMap key survives, entry does not)", () => {
+  it("remove then re-add of the SAME row handle emits a fresh add carrying its data (WeakMap key survives, entry does not)", async () => {
     const [store, setStore] = createStore<Row[]>(initialRows());
-    const { calls, dispose } = mountAdapter(store);
-    const rawB: Row = { id: "b", name: "beta", qty: 2 };
+    const getRowKey = vi.fn((data: Row) => data.id);
+    const { calls, dispose } = mountAdapter(store, getRowKey);
+    const handleB = untrack(() => store[1]!);
 
     setStore((draft) => draft.filter((row) => row.id !== "b"));
     flush();
     expect(calls.at(-1)!.txn.remove?.map((r) => (r as Row).id)).toEqual(["b"]);
 
+    getRowKey.mockClear();
     setStore((draft) => {
-      draft.push(rawB);
+      draft.push(handleB);
     });
     flush();
-    expect(calls.at(-1)!.txn.add?.map((r) => (r as Row).id)).toEqual(["b"]);
+    // the exact removed handle is back, and its key came from the WeakMap (no re-derivation):
+    // the cached key alone must not pass for a live entry
+    expect(untrack(() => store[2])).toBe(handleB);
+    expect(getRowKey).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual({
+      kind: "sync",
+      txn: { add: [{ id: "b", name: "beta", qty: 2 }], addIndex: 2 },
+    });
+    expect(isProxy(calls[1]!.txn.add![0] as object)).toBe(false);
+
+    // the re-added row got a live projection of its own
+    setStore((draft) => {
+      draft[2]!.qty = 22;
+    });
+    flush();
+    await microtasks();
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).toEqual({
+      kind: "async",
+      txn: { update: [{ id: "b", name: "beta", qty: 22 }] },
+    });
     dispose();
   });
 });

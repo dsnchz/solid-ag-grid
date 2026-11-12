@@ -96,7 +96,10 @@ describe("rowStore adapter perf (10k rows, informational)", () => {
       const row = host.querySelector<HTMLElement>(`.ag-row[row-id="${rowId}"]`);
       expect(row, `row ${rowId} disappeared`).toBe(before.row);
       const cells = [...row!.querySelectorAll<HTMLElement>(".ag-cell")];
-      expect(cells, `cells re-created for row ${rowId}`).toEqual(before.cells);
+      expect(cells.length, `cell count changed for row ${rowId}`).toBe(before.cells.length);
+      cells.forEach((cell, i) =>
+        expect(cell, `cell ${i} re-created for row ${rowId}`).toBe(before.cells[i]),
+      );
     }
     // even the updated row keeps its row/cell elements — AG Grid refreshes cell CONTENT
     const targetRowAfter = host.querySelector<HTMLElement>(`.ag-row[row-id="${targetId}"]`);

@@ -138,7 +138,7 @@ describe("SolidComponent portals (jsdom)", () => {
     comp.destroy();
   });
 
-  it("fallback refresh: refreshComponent pushes new props through the live portal entry — no remount, element identity preserved", async () => {
+  it("a comp that never calls props.ref is the stateless analog (no instance); refresh falls back to refreshComponent — live prop push, element identity preserved", async () => {
     const portalManager = new PortalManager();
     mountPortalHost(portalManager);
 
@@ -151,6 +151,8 @@ describe("SolidComponent portals (jsdom)", () => {
     const comp = new SolidComponent(UserComp, portalManager, cellRendererType, false);
     await agPromiseToPromise(comp.init({ value: 1 }));
 
+    // never called props.ref → no framework instance (the stateless analog)
+    expect(comp.getFrameworkComponentInstance()).toBeUndefined();
     // a comp without an instance refresh method still reports refresh via the fallback
     expect(comp.hasMethod("refresh")).toBe(true);
 
@@ -200,22 +202,6 @@ describe("SolidComponent portals (jsdom)", () => {
     expect(warnSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
     warnSpy.mockRestore();
-  });
-
-  it("a comp that never calls props.ref resolves as the stateless analog and routes callMethod to fallbacks", async () => {
-    const portalManager = new PortalManager();
-    mountPortalHost(portalManager);
-
-    const UserComp: UserSolidComponent = (props) => <span>{`plain-${props.value}`}</span>;
-    const comp = new SolidComponent(UserComp, portalManager, cellRendererType, false);
-    await agPromiseToPromise(comp.init({ value: "a" }));
-
-    expect(comp.getFrameworkComponentInstance()).toBeUndefined();
-    // stateless analog settled → refresh goes straight to the fallback prop push
-    comp.callMethod("refresh", [{ value: "b" }] as unknown as IArguments);
-    await waitFor(() => comp.getGui().textContent === "plain-b");
-
-    comp.destroy();
   });
 
   it("destroy removes the portal, unmounts the comp and calls the instance destroy", async () => {

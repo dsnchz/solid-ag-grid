@@ -12,6 +12,7 @@ import {
   createEffect,
   createOptimisticStore,
   createRoot,
+  createSignal,
   createStore,
   flush,
 } from "solid-js";
@@ -125,7 +126,9 @@ describe("createRowStoreAdapter bookkeeping", () => {
     expect(calls[0]!.txn.remove).toEqual([{ id: "b", name: "beta", qty: 2 }]);
   });
 
-  it("batches same-tick field updates into one async update transaction of plain copies", async () => {
+  it("batches same-tick field updates on seeded rows into one async update transaction of plain copies", async () => {
+    // every row here is seeded pre-mount (entry handle null): its field projection only exists
+    // because the first structural apply attached one on first sight of the live proxy
     const { setStore, calls, store } = mountAdapter();
     setStore((draft) => {
       draft[0]!.qty = 100;
@@ -136,26 +139,19 @@ describe("createRowStoreAdapter bookkeeping", () => {
     });
     flush();
     await microtasks();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.kind).toBe("async");
     // one entry per row regardless of how many writes it took, latest values win
-    expect(calls[0]!.txn.update).toEqual([
-      { id: "a", name: "ALPHA", qty: 100 },
-      { id: "c", name: "gamma", qty: 300 },
+    expect(calls).toEqual([
+      {
+        kind: "async",
+        txn: {
+          update: [
+            { id: "a", name: "ALPHA", qty: 100 },
+            { id: "c", name: "gamma", qty: 300 },
+          ],
+        },
+      },
     ]);
     expect(calls[0]!.txn.update![0]).not.toBe(store[0]);
-  });
-
-  it("field updates on SEEDED rows project too (pre-mount entries get projections attached)", async () => {
-    const { setStore, calls } = mountAdapter();
-    setStore((draft) => {
-      draft[1]!.qty = 22;
-    });
-    flush();
-    await microtasks();
-    expect(calls).toEqual([
-      { kind: "async", txn: { update: [{ id: "b", name: "beta", qty: 22 }] } },
-    ]);
   });
 
   it("drops a same-tick field update for a row that was also removed", async () => {
@@ -424,14 +420,23 @@ describe("rowStore dev validation (agGridSolid wiring)", () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   };
+  /** The grid's row data, in node order. */
+  const gridRows = (container: HTMLElement): Row[] => {
+    const api = getGridApi(container.firstElementChild as HTMLElement);
+    expect(api).toBeDefined();
+    const rows: Row[] = [];
+    api!.forEachNode((node) => rows.push(node.data as Row));
+    return rows;
+  };
 
-  it("warns when rowData and rowStore are both provided (rowData is ignored)", async () => {
+  it("warns when rowData and rowStore are both provided: the store drives the grid, rowData is ignored", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const [store] = createStore<Row[]>(initialRows());
-    const { unmount } = render(() => (
+    const [store, setStore] = createStore<Row[]>(initialRows());
+    const [rowData, setRowData] = createSignal<Row[]>([{ id: "x", name: "shadowed", qty: 0 }]);
+    const { container, unmount } = render(() => (
       <AgGridSolid
         columnDefs={columnDefs}
-        rowData={[{ id: "x", name: "shadowed", qty: 0 }]}
+        rowData={rowData()}
         rowStore={store}
         getRowId={(params) => params.data.id}
       />
@@ -440,17 +445,48 @@ describe("rowStore dev validation (agGridSolid wiring)", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       "AG Grid: both `rowData` and `rowStore` are provided — `rowData` is ignored; the row store drives row data.",
     );
+    // boot data is the store's, not rowData's
+    expect(gridRows(container)).toEqual(initialRows());
+
+    // a later rowData change never reaches the grid
+    setRowData([{ id: "y", name: "replaced", qty: 9 }]);
+    flush();
+    await settle();
+    expect(gridRows(container)).toEqual(initialRows());
+
+    // the store stays the live channel
+    setStore((draft) => {
+      draft.push({ id: "d", name: "delta", qty: 4 });
+    });
+    flush();
+    await settle();
+    expect(gridRows(container)).toEqual([...initialRows(), { id: "d", name: "delta", qty: 4 }]);
     unmount();
   });
 
-  it("errors when rowStore is provided without getRowId and disables the projection", async () => {
+  it("errors when rowStore is provided without getRowId and disables the projection (the initial snapshot stays static)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const [store] = createStore<Row[]>(initialRows());
-    const { unmount } = render(() => <AgGridSolid columnDefs={columnDefs} rowStore={store} />);
+    const [store, setStore] = createStore<Row[]>(initialRows());
+    const { container, unmount } = render(() => (
+      <AgGridSolid columnDefs={columnDefs} rowStore={store} />
+    ));
     await settle();
     expect(errorSpy).toHaveBeenCalledWith(
       "AG Grid: `rowStore` requires a `getRowId` callback (stable, data-derived row ids) — live row-store projection is disabled.",
     );
+    // degraded, not empty: the grid shows the store's creation-time snapshot
+    expect(gridRows(container)).toEqual(initialRows());
+
+    // neither a structural nor a field change reaches the grid
+    setStore((draft) => {
+      draft.push({ id: "d", name: "delta", qty: 4 });
+    });
+    setStore((draft) => {
+      draft[0]!.qty = 100;
+    });
+    flush();
+    await settle();
+    expect(gridRows(container)).toEqual(initialRows());
     unmount();
   });
 

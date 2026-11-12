@@ -25,7 +25,7 @@ describe("createReadyQueue", () => {
     expect(calls).toEqual([1, 2, 3]);
   });
 
-  it("funcs queued during the drain run within the same drain (grid is not yet ready)", () => {
+  it("funcs queued during the drain run within the same drain, after the already-queued ones (grid is not yet ready)", () => {
     const queue = createReadyQueue(() => false);
     const calls: string[] = [];
 
@@ -33,9 +33,11 @@ describe("createReadyQueue", () => {
       calls.push("first");
       queue.processWhenReady(() => calls.push("nested"));
     });
+    queue.processWhenReady(() => calls.push("second"));
 
     queue.drainAndMarkReady();
-    expect(calls).toEqual(["first", "nested"]);
+    // FIFO tail, not reentrant: the nested func waits its turn behind "second"
+    expect(calls).toEqual(["first", "second", "nested"]);
   });
 
   it("shouldQueueUpdates gates both direct execution and queue replay", () => {

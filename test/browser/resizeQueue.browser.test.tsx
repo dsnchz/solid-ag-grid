@@ -1,7 +1,7 @@
 // RenderStatusService (the port's IRenderStatusService bean) queues column-resize operations
 // for one macrotask after data events so `api.autoSizeColumns(...)` called from an event
 // handler measures cells Solid has already rendered (React parity, same DX). Pins:
-// 1. The DX contract: autoSizeAllColumns() from onRowDataUpdated resizes after the tick.
+// 1. The DX contract: autoSizeAllColumns() from onRowDataUpdated measures the updated cells.
 // 2. The coalescing: a 500-row update fires the per-row data events 500 times but schedules
 //    ONE drain timer, not one per row (measured: 501 setTimeout calls per tick before the fix,
 //    ~0.2 ms of timer scheduling plus 500 macrotask turns per streaming tick).
@@ -48,7 +48,7 @@ const mount = async (extra: GridOptions<Row>) => {
 };
 
 describe("render status service: queued resize operations", () => {
-  it("autoSizeAllColumns() from onRowDataUpdated resizes after the tick (DX contract)", async () => {
+  it("autoSizeAllColumns() from onRowDataUpdated measures the updated cells after the tick (DX contract)", async () => {
     // armed after mount: the boot's own rowDataUpdated would otherwise autosize at load
     let armed = false;
     const { api, host } = await mount({
@@ -58,13 +58,26 @@ describe("render status service: queued resize operations", () => {
         }
       },
     });
+    const textWidth = () => api.getColumn("text")!.getActualWidth();
+    // baseline: what an autosize gives the mounted `t<n>` cells (no data event → runs at once)
+    api.autoSizeAllColumns();
+    const oldContentWidth = textWidth();
+    expect(oldContentWidth).not.toBe(INITIAL_WIDTH);
+
     armed = true;
-    expect(api.getColumn("text")!.getActualWidth()).toBe(INITIAL_WIDTH);
-    api.applyTransaction({ update: [{ id: 0, text: "short" }] });
+    api.applyTransaction({
+      update: [{ id: 0, text: "a distinctly longer value than any t<n> label in the column" }],
+    });
     await settle();
     await macrotask();
     await macrotask();
-    expect(api.getColumn("text")!.getActualWidth()).not.toBe(INITIAL_WIDTH);
+    const eventDrivenWidth = textWidth();
+    // the event-driven autosize measured the NEW content: it is wider than the old-content
+    // fit and equals a fresh autosize taken now, long after the updated cell rendered (one
+    // that measured before the updated cell rendered would land on the stale `t0` width)
+    expect(eventDrivenWidth).toBeGreaterThan(oldContentWidth);
+    api.autoSizeAllColumns();
+    expect(eventDrivenWidth).toBe(textWidth());
     api.destroy();
     host.remove();
   });

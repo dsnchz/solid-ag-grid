@@ -98,11 +98,14 @@ describe("Cell editors (jsdom)", () => {
 
   it("reactive Solid inline editor: props.value/onValueChange flow through the proxy; getValue commits; props push without remount", async () => {
     const SolidEditor = (props: CustomCellEditorProps<CarRow, string>) => (
-      <input
-        class="unit-solid-editor"
-        value={props.value ?? ""}
-        onInput={(e) => props.onValueChange(e.currentTarget.value)}
-      />
+      <div>
+        <input
+          class="unit-solid-editor"
+          value={props.value ?? ""}
+          onInput={(e) => props.onValueChange(e.currentTarget.value)}
+        />
+        <span class="unit-solid-editor-value">{props.value}</span>
+      </div>
     );
 
     const solid = mountSolid({
@@ -116,17 +119,18 @@ describe("Cell editors (jsdom)", () => {
     await waitFor(() => solid.container.querySelector(".unit-solid-editor") != null);
 
     const input = solid.container.querySelector<HTMLInputElement>(".unit-solid-editor")!;
+    const valueReadout = () => solid.container.querySelector(".unit-solid-editor-value");
     // initial value flowed from the edit params
     expect(input.value).toBe("Toyota");
+    expect(valueReadout()!.textContent).toBe("Toyota");
 
     input.value = "Honda";
     input.dispatchEvent(new InputEvent("input", { bubbles: true }));
     // onValueChange → proxy.updateValue is synchronous: the grid sees the value immediately
     expect(api.getCellEditorInstances()[0]!.getValue!()).toBe("Honda");
-    // the version-bump props push updates the LIVE component (same element, no remount)
-    await waitFor(
-      () => solid.container.querySelector<HTMLInputElement>(".unit-solid-editor") != null,
-    );
+    // the version-bump props push re-renders props.value in the LIVE component (same input
+    // element, no remount)
+    await waitFor(() => valueReadout()?.textContent === "Honda", 2000);
     expect(solid.container.querySelector(".unit-solid-editor")).toBe(input);
 
     api.stopEditing();

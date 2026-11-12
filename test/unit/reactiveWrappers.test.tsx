@@ -2,34 +2,43 @@
 // GridPortals render loop with mocked componentTypes/params — no grid core involved (the
 // browser suite covers the end-to-end parity oracle; enterprise-only slots — statusPanel,
 // toolPanel, menuItem — are unit-tested here only, per the task's out-of-scope note).
+// Exception: behaviors whose observable lives in the grid core (the real ProvidedFilter's
+// deprecation warning, the enableFilterHandlers display path, the 36.3 overlay slots, the
+// reactiveCustomComponents=false fallback) mount a real AgGridSolid in jsdom.
 import { render } from "@solidjs/testing-library";
 import type {
   ComponentType,
   FilterDisplayParams,
   FloatingFilterDisplayParams,
+  GridApi,
+  GridOptions,
   ICellEditorParams,
   IDateParams,
   IDoesFilterPassParams,
+  IFilter,
   IFilterParams,
   IFloatingFilterParams,
   IMenuItemParams,
   IOverlayParams,
   IStatusPanelParams,
   IToolPanelParams,
+  TextFilterModel,
 } from "ag-grid-community";
-import { ProvidedFilter } from "ag-grid-community";
-import { untrack } from "solid-js";
+import {
+  _warnForGrid,
+  AllCommunityModule,
+  ModuleRegistry,
+  ProvidedFilter,
+} from "ag-grid-community";
+import { createSignal, untrack } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
 import GridPortals from "../../src/core/gridPortals";
 import { PortalManager } from "../../src/core/portalManager";
 import type { UserSolidComponent } from "../../src/core/solidComponent";
-import { SolidComponent } from "../../src/core/solidComponent";
-import { SolidFrameworkComponentWrapper } from "../../src/core/solidFrameworkComponentWrapper";
 import { CellEditorComponentProxy } from "../../src/customComp/cellEditorComponentProxy";
 import { CellRendererComponentWrapper } from "../../src/customComp/cellRendererComponentWrapper";
 import { ColumnSelectionLabelRendererComponentWrapper } from "../../src/customComp/columnSelectionLabelRendererComponentWrapper";
-import { CustomComponentWrapper } from "../../src/customComp/customComponentWrapper";
 import { CustomOverlayComponentWrapper } from "../../src/customComp/customOverlayComponentWrapper";
 import { DateComponentWrapper } from "../../src/customComp/dateComponentWrapper";
 import { DragAndDropImageComponentWrapper } from "../../src/customComp/dragAndDropImageComponentWrapper";
@@ -37,7 +46,6 @@ import { FilterComponentWrapper } from "../../src/customComp/filterComponentWrap
 import { FilterDisplayComponentWrapper } from "../../src/customComp/filterDisplayComponentWrapper";
 import { FloatingFilterComponentProxy } from "../../src/customComp/floatingFilterComponentProxy";
 import { FloatingFilterComponentWrapper } from "../../src/customComp/floatingFilterComponentWrapper";
-import { FloatingFilterDisplayComponentProxy } from "../../src/customComp/floatingFilterDisplayComponentProxy";
 import { FloatingFilterDisplayComponentWrapper } from "../../src/customComp/floatingFilterDisplayComponentWrapper";
 import {
   useGridDate,
@@ -49,6 +57,23 @@ import { InnerHeaderComponentWrapper } from "../../src/customComp/innerHeaderCom
 import { MenuItemComponentWrapper } from "../../src/customComp/menuItemComponentWrapper";
 import { StatusPanelComponentWrapper } from "../../src/customComp/statusPanelComponentWrapper";
 import { ToolPanelComponentWrapper } from "../../src/customComp/toolPanelComponentWrapper";
+import type {
+  AgGridSolidRef,
+  CustomFilterDisplayProps,
+  CustomFloatingFilterDisplayProps,
+  CustomFloatingFilterProps,
+  CustomOverlayProps,
+} from "../../src/index";
+import AgGridSolid from "../../src/index";
+
+vi.mock("ag-grid-community", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("ag-grid-community")>();
+  // spied so the reactiveCustomComponents=false warning's grid attribution is observable
+  // (the console line carries only the id)
+  return { ...mod, _warnForGrid: vi.fn(mod._warnForGrid) };
+});
+
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const waitFor = async (cond: () => boolean, timeoutMs = 3000): Promise<void> => {
   const start = Date.now();
@@ -71,6 +96,30 @@ const newHostedManager = () => {
   const portalManager = new PortalManager();
   mountPortalHost(portalManager);
   return portalManager;
+};
+
+interface CarRow {
+  make: string;
+  price: number;
+}
+
+const carRows = (): CarRow[] => [
+  { make: "Toyota", price: 35000 },
+  { make: "Ford", price: 32000 },
+  { make: "Porsche", price: 72000 },
+];
+
+/** a real grid in jsdom, for behaviors whose observable lives in the grid core */
+const mountGrid = (options: GridOptions<CarRow>) => {
+  let gridRef: AgGridSolidRef<CarRow> | undefined;
+  const rendered = render(() => (
+    <AgGridSolid
+      containerStyle={{ height: "300px", width: "600px" }}
+      {...options}
+      ref={(r: AgGridSolidRef<CarRow>) => (gridRef = r)}
+    />
+  ));
+  return { ...rendered, api: () => gridRef?.api as GridApi<CarRow> | undefined };
 };
 
 describe("FilterComponentWrapper (jsdom)", () => {
@@ -327,38 +376,111 @@ describe("FloatingFilterComponentProxy (no portal)", () => {
     expect(afterGuiAttached).toHaveBeenCalledTimes(1);
   });
 
-  it("passes suppressDeprecationWarning to a ProvidedFilter parent (grid-initiated setModel)", () => {
-    const setModel = vi.fn().mockReturnValue(undefined);
-    const providedFilter: object = Object.create(ProvidedFilter.prototype);
-    Object.assign(providedFilter, { setModel });
-    const filterChangedCallback = vi.fn();
-    const params = {
-      parentFilterInstance: (cb: (instance: unknown) => void) => cb(providedFilter),
-      filterParams: { filterChangedCallback },
-    } as unknown as IFloatingFilterParams;
-    const proxy = new FloatingFilterComponentProxy(params, vi.fn());
+  it("onModelChange applies the model to the grid's real ProvidedFilter parent without its deprecated-setModel warning (#286)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warned286 = () =>
+      warnSpy.mock.calls.some(([message]) => message === "AG Grid: warning #286");
+    const SolidFloatingFilter = (
+      props: CustomFloatingFilterProps<CarRow, unknown, TextFilterModel>,
+    ) => (
+      <button
+        class="unit-ff-ford"
+        onClick={() => props.onModelChange({ filterType: "text", type: "equals", filter: "Ford" })}
+      />
+    );
+    const grid = mountGrid({
+      columnDefs: [
+        {
+          field: "make",
+          filter: "agTextColumnFilter",
+          floatingFilter: true,
+          floatingFilterComponent: SolidFloatingFilter,
+        },
+        { field: "price" },
+      ],
+      rowData: carRows(),
+    });
+    const ford = () => grid.container.querySelector<HTMLButtonElement>(".unit-ff-ford");
+    await waitFor(() => grid.api() != null && ford() != null);
+    const api = grid.api()!;
 
-    proxy.getProps().onModelChange("Kia");
-    expect(setModel).toHaveBeenCalledWith("Kia", true);
+    // grid-initiated: updateFloatingFilterParent → TextFilter.setModel(model, true)
+    ford()!.click();
+    await waitFor(() => api.getDisplayedRowCount() === 1);
+    expect(api.getColumnFilterModel("make")).toEqual({
+      filterType: "text",
+      type: "equals",
+      filter: "Ford",
+    });
+    expect(warned286()).toBe(false);
+
+    // control: the same real parent filter does warn on a setModel without the flag
+    const parent = await api.getColumnFilterInstance<IFilter>("make");
+    expect(parent).toBeInstanceOf(ProvidedFilter);
+    await parent!.setModel(null);
+    expect(warned286()).toBe(true);
+
+    warnSpy.mockRestore();
+    grid.unmount();
   });
 });
 
-describe("FloatingFilterDisplayComponentProxy (no portal)", () => {
-  it("getProps returns the params; refresh swaps them; setMethods attaches optional methods", () => {
-    const refreshProps = vi.fn();
-    const params = { model: "a" } as unknown as FloatingFilterDisplayParams;
-    const proxy = new FloatingFilterDisplayComponentProxy(params, refreshProps);
-    expect(proxy.getProps()).toBe(params);
+describe("FloatingFilterDisplayComponentProxy (enableFilterHandlers, jsdom grid)", () => {
+  it("the mounted floating filter sees each refreshed model live (no remount); its onModelChange applies through the filter handler", async () => {
+    let runs = 0;
+    const SolidFloatingDisplay = (
+      props: CustomFloatingFilterDisplayProps<CarRow, unknown, TextFilterModel>,
+    ) => {
+      runs++;
+      return (
+        <button
+          class="unit-ff-display"
+          onClick={() =>
+            props.onModelChange({ filterType: "text", type: "equals", filter: "Porsche" })
+          }
+        >
+          {`model=${props.model?.filter ?? "none"}`}
+        </button>
+      );
+    };
+    const grid = mountGrid({
+      enableFilterHandlers: true,
+      columnDefs: [
+        {
+          field: "make",
+          filter: "agTextColumnFilter",
+          floatingFilter: true,
+          floatingFilterComponent: SolidFloatingDisplay,
+        },
+        { field: "price" },
+      ],
+      rowData: carRows(),
+    });
+    const display = () => grid.container.querySelector<HTMLButtonElement>(".unit-ff-display");
+    await waitFor(() => grid.api() != null && display() != null);
+    const api = grid.api()!;
+    const element = display()!;
+    expect(element.textContent).toBe("model=none");
 
-    const next = { model: "b" } as unknown as FloatingFilterDisplayParams;
-    proxy.refresh(next);
-    expect(proxy.getProps()).toBe(next);
-    expect(refreshProps).toHaveBeenCalledTimes(1);
+    // grid → floating: the model change refreshes the display with new params
+    await api.setColumnFilterModel("make", { filterType: "text", type: "equals", filter: "Ford" });
+    api.onFilterChanged();
+    await waitFor(() => display()?.textContent === "model=Ford");
+    expect(display()).toBe(element);
 
-    const afterGuiAttached = vi.fn();
-    proxy.setMethods({ afterGuiAttached });
-    (proxy as unknown as { afterGuiAttached: () => void }).afterGuiAttached();
-    expect(afterGuiAttached).toHaveBeenCalledTimes(1);
+    // floating → grid: the (refreshed) onModelChange applies the model through the handler
+    element.click();
+    await waitFor(() => api.getDisplayedRowCount() === 1);
+    expect(api.getColumnFilterModel("make")).toEqual({
+      filterType: "text",
+      type: "equals",
+      filter: "Porsche",
+    });
+    await waitFor(() => display()?.textContent === "model=Porsche");
+    expect(display()).toBe(element);
+    expect(runs).toBe(1);
+
+    grid.unmount();
   });
 });
 
@@ -620,70 +742,164 @@ describe("MenuItemComponentWrapper (jsdom, enterprise slot, mocked type)", () =>
   });
 });
 
-describe("SolidFrameworkComponentWrapper switch", () => {
-  const createWrapperFor = (name: string, gridOptions: Record<string, unknown>) => {
-    const portalManager = new PortalManager();
-    const frameworkWrapper = new SolidFrameworkComponentWrapper(portalManager, gridOptions);
-    // UserComponentFactory sets the grid id on wire, before any createWrapper call
-    frameworkWrapper.setGridId("test-grid");
-    const componentType: ComponentType = { name, supportsJsFunction: name === "cellRenderer" };
-    return (
-      frameworkWrapper as unknown as {
-        createWrapper: (comp: unknown, type: ComponentType) => unknown;
-      }
-    ).createWrapper(() => <div />, componentType);
-  };
+// SolidFrameworkComponentWrapper slot routing, observed through the grid. Slots whose routing a
+// browser test already pins end to end are not repeated: filter (reactiveWrappers.browser —
+// getInstance yields the user handle, only FilterComponentWrapper has it) and dateComponent
+// (reactiveWrappers.browser — agDateColumnFilter filters through DateComponentWrapper's
+// getDate/setDate, which the plain SolidComponent fallback lacks). Routing with no observable
+// in a community grid: floatingFilterComponent (HeaderFilterCellComp renders Solid floating
+// filters inline through the proxies, bypassing this switch), innerHeaderComponent (the
+// default header comp is recreated, never refreshed, on header changes — as in vanilla),
+// dragAndDropImageComponent (needs a real drag), and the enterprise/JS-internal slots
+// (statusPanel, toolPanel, menuItem, columnLabelRenderer, cellRenderer) — those keep the
+// wrapper-class tests above.
+describe("SolidFrameworkComponentWrapper slot routing (jsdom grid)", () => {
+  // only the reactive CustomOverlayComponentWrapper implements refresh — the plain SolidComponent
+  // fallback suppresses it for overlays, so a params change would leave the overlay stale
+  it.each([
+    {
+      slot: "loadingOverlayComponent",
+      paramsKey: "loadingOverlayComponentParams",
+      shownBy: { loading: true, rowData: carRows() },
+      overlayType: "loading",
+    },
+    {
+      slot: "noRowsOverlayComponent",
+      paramsKey: "noRowsOverlayComponentParams",
+      shownBy: { rowData: [] },
+      overlayType: "noRows",
+    },
+    // 36.3 slots: one component for every provided overlay type, and the custom active overlay
+    {
+      slot: "overlayComponent",
+      paramsKey: "overlayComponentParams",
+      shownBy: { rowData: [] },
+      overlayType: "noRows",
+    },
+    {
+      slot: "activeOverlay",
+      paramsKey: "activeOverlayParams",
+      shownBy: { rowData: carRows() },
+      overlayType: "custom",
+    },
+  ])(
+    "$slot renders and $paramsKey changes refresh the live overlay (no remount)",
+    async ({ slot, paramsKey, shownBy, overlayType }) => {
+      const [label, setLabel] = createSignal("first");
+      let runs = 0;
+      const SolidOverlay = (props: CustomOverlayProps<CarRow> & { label: string }) => {
+        runs++;
+        return <div class="unit-overlay">{`${props.overlayType ?? "custom"}:${props.label}`}</div>;
+      };
+      const grid = mountGrid({
+        columnDefs: [{ field: "make" }],
+        ...shownBy,
+        [slot]: SolidOverlay,
+        get [paramsKey]() {
+          return { label: label() };
+        },
+      });
+      const overlay = () => grid.container.querySelector(".unit-overlay");
+      await waitFor(() => overlay()?.textContent === `${overlayType}:first`);
+      const element = overlay();
 
-  it("routes every reactive slot to its wrapper class", () => {
-    const opts = { reactiveCustomComponents: true };
-    expect(createWrapperFor("filter", opts)).toBeInstanceOf(FilterComponentWrapper);
-    expect(createWrapperFor("floatingFilterComponent", opts)).toBeInstanceOf(
-      FloatingFilterComponentWrapper,
+      setLabel("second");
+      await waitFor(() => overlay()?.textContent === `${overlayType}:second`);
+      expect(overlay()).toBe(element);
+      expect(runs).toBe(1);
+
+      grid.unmount();
+    },
+  );
+
+  it("enableFilterHandlers: a Solid filter gets the applied model pushed live (no remount) and its onModelChange filters rows via the colDef doesFilterPass", async () => {
+    let runs = 0;
+    const SolidFilterDisplay = (props: CustomFilterDisplayProps<CarRow, unknown, string>) => {
+      runs++;
+      return (
+        <button class="unit-filter-display" onClick={() => props.onModelChange("Ford")}>
+          {`model=${props.model ?? "none"}`}
+        </button>
+      );
+    };
+    const grid = mountGrid({
+      // jsdom has no offsetParent: popup positioning needs the body as the popup parent
+      popupParent: document.body,
+      enableFilterHandlers: true,
+      columnDefs: [
+        {
+          field: "make",
+          filter: {
+            component: SolidFilterDisplay,
+            doesFilterPass: ({ model, data }: { model: string; data: CarRow }) =>
+              data.make === model,
+          },
+        },
+        { field: "price" },
+      ],
+      rowData: carRows(),
+    });
+    await waitFor(() => grid.api() != null);
+    const api = grid.api()!;
+    api.showColumnFilter("make");
+    const display = () => document.querySelector<HTMLButtonElement>(".unit-filter-display");
+    await waitFor(() => display() != null);
+    const element = display()!;
+    expect(element.textContent).toBe("model=none");
+
+    await api.setColumnFilterModel("make", "Toyota");
+    api.onFilterChanged();
+    await waitFor(() => display()?.textContent === "model=Toyota");
+    expect(api.getDisplayedRowCount()).toBe(1);
+
+    element.click();
+    await waitFor(() => api.getColumnFilterModel("make") === "Ford");
+    await waitFor(
+      () => api.getDisplayedRowCount() === 1 && display()?.textContent === "model=Ford",
     );
-    expect(createWrapperFor("dateComponent", opts)).toBeInstanceOf(DateComponentWrapper);
-    expect(createWrapperFor("dragAndDropImageComponent", opts)).toBeInstanceOf(
-      DragAndDropImageComponentWrapper,
-    );
-    expect(createWrapperFor("loadingOverlayComponent", opts)).toBeInstanceOf(
-      CustomOverlayComponentWrapper,
-    );
-    expect(createWrapperFor("noRowsOverlayComponent", opts)).toBeInstanceOf(
-      CustomOverlayComponentWrapper,
-    );
-    expect(createWrapperFor("overlayComponent", opts)).toBeInstanceOf(
-      CustomOverlayComponentWrapper,
-    );
-    expect(createWrapperFor("activeOverlay", opts)).toBeInstanceOf(CustomOverlayComponentWrapper);
-    expect(createWrapperFor("statusPanel", opts)).toBeInstanceOf(StatusPanelComponentWrapper);
-    expect(createWrapperFor("toolPanel", opts)).toBeInstanceOf(ToolPanelComponentWrapper);
-    expect(createWrapperFor("menuItem", opts)).toBeInstanceOf(MenuItemComponentWrapper);
-    expect(createWrapperFor("cellRenderer", opts)).toBeInstanceOf(CellRendererComponentWrapper);
-    expect(createWrapperFor("columnLabelRenderer", opts)).toBeInstanceOf(
-      ColumnSelectionLabelRendererComponentWrapper,
-    );
-    expect(createWrapperFor("innerHeaderComponent", opts)).toBeInstanceOf(
-      InnerHeaderComponentWrapper,
-    );
-    // non-reactive slots stay plain SolidComponents
-    const tooltip = createWrapperFor("tooltipComponent", opts);
-    expect(tooltip).toBeInstanceOf(SolidComponent);
-    expect(tooltip).not.toBeInstanceOf(CustomComponentWrapper);
+    expect(api.getDisplayedRowAtIndex(0)!.data!.make).toBe("Ford");
+    expect(display()).toBe(element);
+    expect(runs).toBe(1);
+
+    grid.unmount();
   });
 
-  it("enableFilterHandlers switches filter slots to the Display wrappers", () => {
-    const opts = { reactiveCustomComponents: true, enableFilterHandlers: true };
-    expect(createWrapperFor("filter", opts)).toBeInstanceOf(FilterDisplayComponentWrapper);
-    expect(createWrapperFor("floatingFilterComponent", opts)).toBeInstanceOf(
-      FloatingFilterDisplayComponentWrapper,
-    );
-  });
-
-  it("reactiveCustomComponents=false falls back to SolidComponent and warns (deprecated path)", () => {
+  it("reactiveCustomComponents=false warns #231 for the grid, and a Solid filter still works through its props.ref handle", async () => {
+    vi.mocked(_warnForGrid).mockClear();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const wrapper = createWrapperFor("filter", { reactiveCustomComponents: false });
-    expect(wrapper).toBeInstanceOf(SolidComponent);
-    expect(wrapper).not.toBeInstanceOf(CustomComponentWrapper);
-    expect(warnSpy).toHaveBeenCalled();
+    let model: { value: string } | null = null;
+    const handle: IFilter = {
+      doesFilterPass: ({ data }) => model == null || (data as CarRow).make === model.value,
+      isFilterActive: () => model != null,
+      getModel: () => model,
+      setModel: (next: { value: string } | null) => {
+        model = next;
+      },
+    };
+    const LegacyFilter = (props: { ref: (instance: IFilter) => void }) => {
+      // eslint-disable-next-line solid/reactivity -- props.ref(handle) is the imperative-handle idiom; ref is a static merge source (plugin predates Solid 2.0)
+      props.ref(handle);
+      return <div>legacy</div>;
+    };
+    const grid = mountGrid({
+      reactiveCustomComponents: false,
+      columnDefs: [{ field: "make", filter: LegacyFilter }, { field: "price" }],
+      rowData: carRows(),
+    });
+    await waitFor(() => grid.api() != null);
+    const api = grid.api()!;
+
+    // the fallback SolidComponent hands the grid the comp's own handle as the filter instance
+    expect(await api.getColumnFilterInstance("make")).toBe(handle);
+    expect(_warnForGrid).toHaveBeenCalledWith(api.getGridId(), 231);
+
+    // and the grid filters through it
+    await api.setColumnFilterModel("make", { value: "Ford" });
+    api.onFilterChanged();
+    await waitFor(() => api.getDisplayedRowCount() === 1);
+    expect(api.getDisplayedRowAtIndex(0)!.data!.make).toBe("Ford");
+
     warnSpy.mockRestore();
+    grid.unmount();
   });
 });
