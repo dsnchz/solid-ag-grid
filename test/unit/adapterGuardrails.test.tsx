@@ -91,7 +91,11 @@ describe("rowData store-proxy guardrail (value protocol)", () => {
     };
     const { unmount } = render(() => <Harness />);
     await settle();
-    expect(warnSpy).not.toHaveBeenCalled();
+    // the one dev warning a never-loaded async prop raises since rc.21: the prop-diff effect's
+    // narrow NotReadyError catch (src/core/asyncProps.ts verdict; solidjs/solid#4789). No other
+    // warning — in particular not the store-proxy guardrail
+    const warnings = warnSpy.mock.calls.map(([message]) => String(message));
+    expect(warnings.filter((m) => !m.startsWith("[CAUGHT_REACTIVE_READ]"))).toEqual([]);
     unmount();
   });
 });

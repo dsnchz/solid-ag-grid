@@ -356,7 +356,12 @@ describe("createRowStoreAdapter bookkeeping", () => {
     dispose();
   });
 
-  it("EMPIRICAL: optimistic revert invalidates per-row (path granularity), not whole-array", async () => {
+  // KNOWN UPSTREAM REGRESSION (solid rc.14 – rc.21): one optimistic write re-runs EVERY row's
+  // deep(row) projection ([2,2,2], not [1,2,1]), so a one-row optimistic edit becomes an n-row
+  // update transaction. Bisected rc.13 → rc.14; fixed on solid `next` by c98168082 (#4729, "a
+  // guess's slot is the point of write"), unreleased at rc.21. it.fails flips red once the fix
+  // ships: delete the marker then
+  it.fails("EMPIRICAL: optimistic revert invalidates per-row (path granularity), not whole-array", async () => {
     const [rows] = createStore<Row[]>(initialRows());
     const [optimistic, setOptimistic] = createOptimisticStore<Row[]>(rows);
     const fieldRuns = [0, 0, 0];

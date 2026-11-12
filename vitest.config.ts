@@ -71,7 +71,7 @@ export default defineConfig({
         // resolve conditions do not leak. test/browser/perfHarness.browser.test.tsx pins that
         // the prod runtime really loaded here; test/unit/reactiveGraphBudget.test.tsx needs DEV
         // and therefore pins the inverse for the unit project.
-        plugins: [solid({ dev: false, hot: false })],
+        plugins: [solid({ dev: false, refresh: false })],
         resolve: { conditions: ["production", "browser", "module", "default"] },
         // no `define` of process.env.NODE_ENV either: Vitest applies process.env defines to the
         // shared Node process, which had the same effect

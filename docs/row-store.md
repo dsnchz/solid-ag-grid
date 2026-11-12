@@ -218,13 +218,15 @@ The adapter does per-row work, not per-array work:
 
 Measured (informational browser benchmark, 10,000 rows, real Chromium — `test/browser/rowStorePerf.browser.test.tsx`): a single-row **add** paints in **~15 ms** store-write→painted-row; a single-row **field update** paints in **~58 ms** store-write→painted-cell — a figure that _includes_ the grid's own `applyTransactionAsync` batching window (~50 ms by default), i.e. it is dominated by the grid's deliberate batching, not adapter CPU. The same benchmark asserts the updates are surgical: every other rendered row keeps its exact DOM elements.
 
-> Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.0-rc.11` peer floor. Verified against each Solid release we bump to.
+> Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.0-rc.21` peer floor. Verified against each Solid release we bump to.
 
 ### Optimistic views
 
 `rowStore` accepts a `createOptimisticStore` view like any other array store: optimistic writes paint immediately, and writes to the **base** store (the server-confirmed truth) project the same way, including nested fields and nested arrays. A structural optimistic write (push/splice) in flight keeps every untouched row's identity, so it costs O(delta) like a plain-store write.
 
 This relies on the fix for [solidjs/solid#3323](https://github.com/solidjs/solid/issues/3323), which shipped in Solid 2.0.0-rc.8. On rc.1 – rc.7, `deep()` over an optimistic view missed base-store writes and structural optimistic writes re-served every row; earlier releases of this package carried a per-key tracking workaround for that, removed once the fix landed.
+
+**Known Solid regression, rc.14 – rc.21:** an optimistic write to one row re-runs every row's `deep(row)` projection. The adapter's per-row capture therefore queues the whole store as an `update` batch for each optimistic edit: correct data, but O(n) instead of O(delta). Plain base-store writes are unaffected. The fix is on Solid's `next` branch (solidjs/solid#4729) but has not been released as of rc.21. This package's test for the optimistic per-row path is marked as a known failure and will flag the Solid release that fixes it.
 
 ## See also
 

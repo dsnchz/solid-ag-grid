@@ -14,7 +14,7 @@ import { isPending, latest, NotReadyError } from "solid-js";
 //
 // HOW THE PROBE IS SHAPED (Solid ruling, documentation/solid-2.0/04-stores.md "A derive must
 // never swallow NotReadyError" / solid#3073 — branch on readiness with isPending() rather than
-// catching), measured on rc.7, re-verified on rc.11 (test "real async memo" below):
+// catching), measured on rc.7, re-verified on rc.11 and rc.21 (test "real async memo" below):
 // - refetch of an INITIALIZED source: the read holds the previous value in one phase and throws
 //   in a later one; isPending() reports true without throwing in both. So isPending() is the
 //   probe: a pending key is omitted, the pending-signal companion re-runs us when it lands.
@@ -24,6 +24,12 @@ import { isPending, latest, NotReadyError } from "solid-js";
 //   effect compute (grid creation is server-inert, effects never run in SSR), the dependency
 //   registers before the throw so the re-run on settle is the documented browser mechanism,
 //   and "absent" is the UX we want. That one case keeps a narrow catch. Do not widen it.
+// - rc.21 adds the dev diagnostic CAUGHT_REACTIVE_READ (D-42, solid#4481), which reports this
+//   catch once per grid while a never-loaded async prop is pending. Behavior is unchanged on
+//   rc.21 (the compute still re-runs on the landing; headless repro). The sanctioned rethrow
+//   would suspend the whole compute and hold EVERY other prop until the slowest first load,
+//   which is the footgun per-key isolation exists to avoid. Asked upstream for a catch-free
+//   probe (solidjs/solid#4789); replace the catch with it when one ships.
 const isNotReadyError = (e: unknown): boolean =>
   e instanceof NotReadyError ||
   // dev-mode untracked pending reads (grid creation runs in onSettled/untrack) throw a plain
