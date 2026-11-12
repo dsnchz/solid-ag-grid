@@ -80,7 +80,7 @@ is pinned exactly:
 |                       | before the diet | now                                                 |
 | --------------------- | --------------- | --------------------------------------------------- |
 | computations per cell | 41              | 9 (2026-11-12 Show diet + renderer hole, see below) |
-| signals per cell      | 11              | 12 (`hasDetails` is its own signal, see below)      |
+| signals per cell      | 11              | 12 (the renderer slot is its own signal, see below) |
 | computations per row  | 40              | 10 (2026-11-12 row lanes, see below)                |
 | signals per row       | 11              | 6 (one boolean per pinned lane, see below)          |
 
@@ -140,6 +140,14 @@ it flips (first push, inline-edit start). In the diagnostics scenario,
 `showCellWrapper` re-runs drop from 104 to 0. The A/B is neutral (prod
 posture, interleaved, medians of 3): row swap 5.7 / 5.7 ms tall, 5.7 / 5.6
 wide; streaming and sync transactions within the harness's 0.1 ms noise.
+
+The same CI test later flagged `frameworkRendererInfo` (it read `compDetails`
+for the renderer class). The flag became `rendererSlot` instead, at no extra
+signal: `undefined` (no details), `null` (no framework renderer) or the
+framework component class. "Has details" is `slot !== undefined`, and the
+renderer memo reads the slot. A class's identity changes only with the
+renderer, so value ticks reach neither reader: a Solid-renderer cell's tick
+re-runs 3 scopes (props merge, refresh bridge, text), pinned with both memos at 0. Writes use the updater form, since a component class is a function.
 
 **Rows, 27 → 10 computations and 5 → 6 signals (2026-11-12).** Sixteen of the
 27 were four `<Show>`s at four nodes each (the `Show`, its `condition`,

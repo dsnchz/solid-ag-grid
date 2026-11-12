@@ -289,17 +289,18 @@ describe("re-run budgets (update granularity)", () => {
     return artifact;
   };
 
-  it("one Solid-renderer cell's value: only that cell's four scopes re-run", async () => {
+  it("one Solid-renderer cell's value: only that cell's three scopes re-run", async () => {
     const { data, api, grid } = await mountForUpdates();
     const rendered = grid.container.querySelector('.ag-row[row-id="r3"] b');
     const artifact = await captureUpdate(() =>
       api.applyTransaction({ update: [{ ...data[3]!, price: 999 }] }),
     );
-    // renderer props merge, renderer identity, refresh bridge, the renderer's text
-    expectRerunBudget(artifact, 4);
-    expectRerunBudget(artifact, 1, { scope: "frameworkRendererInfo" });
-    // the wrapper decision reads the hasDetails flag, which a value refresh never flips
+    // renderer props merge, refresh bridge, the renderer's text
+    expectRerunBudget(artifact, 3);
+    // the wrapper decision and the renderer identity read the renderer slot, which a value
+    // refresh never changes (the compDetails object it replaces is not read by either)
     expectRerunBudget(artifact, 0, { scope: "showCellWrapper" });
+    expectRerunBudget(artifact, 0, { scope: "frameworkRendererInfo" });
     // the value reached the mounted renderer: same element, not a remount (a remount trades
     // re-runs for creations, so the budget above cannot see it)
     const after = grid.container.querySelector('.ag-row[row-id="r3"] b');

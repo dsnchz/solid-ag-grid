@@ -110,7 +110,7 @@ const measure = async (rows: number, cols: number) => {
 //     wrapper/no-wrapper decision are one hole each instead of a <Show>)
 //   2026-11-12 hasDetails signal: cell 12 / 12 (+1 signal by design — an equality boundary at
 //     the source so value refreshes stop re-running the wrapper memo; design note in
-//     docs/field-guide/04-performance-model.md)
+//     docs/field-guide/04-performance-model.md; later widened to the renderer slot, same count)
 //   2026-11-12 framework-renderer hole: cell 9 / 12 (the keyed <Show> around the framework
 //     renderer is one hole; its condition and child memos are gone from every cell)
 //   2026-11-12 row lanes: row 10 / 6 (the two constant <Show>s — lanes vs full-width anchor —

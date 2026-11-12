@@ -84,11 +84,17 @@ const CellComp = (props: CellCompProps) => {
     hasRenderer ? undefined : cellCtrl.getValueToDisplay(),
   );
   const [force, setForce] = createSignal<boolean>(false);
-  // "has details" as its own boolean signal, written beside compDetails: the ctrl replaces the
-  // compDetails object on every value refresh, so a reader deriving the flag from it re-ran on
-  // every tick to produce the same boolean (WASTED_RECOMPUTE on showCellWrapper, CI). The
-  // signal's `===` equality notifies only when the flag flips: first push, inline edit start.
-  const [hasDetails, setHasDetails] = createSignal<boolean>(!hasRenderer);
+  // RENDERER SLOT, written beside compDetails: undefined = no details yet, null = details without
+  // a framework renderer (raw value or a JS renderer), else the framework component class. The
+  // ctrl replaces the compDetails object on every value refresh, so readers deriving "has
+  // details" or "which framework renderer" from it re-ran on every tick to produce the same
+  // answer (WASTED_RECOMPUTE on showCellWrapper and frameworkRendererInfo, CI). The slot's
+  // `===` equality notifies only when it changes: first push, a renderer change, inline edit
+  // start. A Solid component class is a function, so every write uses the updater form.
+  const slotOf = (details: UserCompDetails | null | undefined): unknown =>
+    details == null ? details : details.componentFromFramework ? details.componentClass : null;
+  const [rendererSlot, setRendererSlot] = createSignal<unknown>(hasRenderer ? undefined : null);
+  const hasDetails = () => rendererSlot() !== undefined;
   const [editDetails, setEditDetails] = createSignal<EditDetails | undefined>();
   const [renderKey, setRenderKey] = createSignal<number>(1);
   // bumped by CellEditorComponentProxy's refreshProps — drives the reactive editor-props
@@ -278,7 +284,7 @@ const CellComp = (props: CellCompProps) => {
             }
             return next;
           });
-          setHasDetails(true);
+          setRendererSlot(() => slotOf(compDetails ?? null));
           setValue(() => value);
           setForce(force);
         };
@@ -298,7 +304,7 @@ const CellComp = (props: CellCompProps) => {
               ensureJsRenderer();
             }
             setCompDetails(loadingComp);
-            setHasDetails(true);
+            setRendererSlot(() => slotOf(loadingComp));
             setValue(undefined);
             setForce(false);
             onReady.then(() => setDetails());
@@ -327,7 +333,7 @@ const CellComp = (props: CellCompProps) => {
           if (!popup) {
             // inline editing replaces the value: "no details" until the ctrl re-pushes
             setCompDetails(undefined);
-            setHasDetails(false);
+            setRendererSlot(() => undefined);
             setValue(undefined);
           }
         } else {
@@ -386,11 +392,11 @@ const CellComp = (props: CellCompProps) => {
   // exist anyway. The JS renderer's element needs no check: inline editing suppresses it.
   const frameworkRendererInfo = createMemo<FrameworkRendererInfo | undefined>(
     () => {
-      const details = compDetails();
-      if (!details?.componentFromFramework || !cellValueVisible()) {
+      const Comp = rendererSlot();
+      if (Comp == null || !cellValueVisible()) {
         return undefined;
       }
-      return { Comp: details.componentClass, key: renderKey() };
+      return { Comp, key: renderKey() };
     },
     { equals: (a, b) => a?.Comp === b?.Comp && a?.key === b?.key },
   );
