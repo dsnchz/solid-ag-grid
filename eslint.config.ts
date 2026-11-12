@@ -1,7 +1,7 @@
 import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
-import solid from "eslint-plugin-solid/configs/typescript";
+import solid from "eslint-plugin-solid/configs/v2-strict";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
@@ -47,14 +47,17 @@ export default defineConfig(
         ...globals.es2022,
       },
     },
+    // Solid 2.0, strict (`settings.solid.version: 2`; v2 warnings promoted to errors) plus the 2.0
+    // rules: removed-api, no-module-scope-reactive-primitive, no-restated-default-options,
+    // no-single-arg-create-effect, no-store-mutation-outside-setter, no-write-in-pure-computation,
+    // no-accessor-as-prop, and solid/no-unassigned-vars (ref-aware; replaces the core rule)
     plugins: solid.plugins,
+    settings: solid.settings,
     rules: {
       ...solid.rules,
       // a Solid rule that false-positives on a Solid 2.0 idiom is disabled here, with a comment
       // citing the idiom
       "@typescript-eslint/no-non-null-assertion": "off",
-      // Solid's `let el!: HTMLDivElement` + ref attribute assigns outside ESLint's view
-      "no-unassigned-vars": "off",
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -85,6 +88,11 @@ export default defineConfig(
       globals: {
         ...globals.node,
       },
+    },
+    rules: {
+      // fixtures hand never-written stores to the grid as `rowStore` / an optimistic view's base:
+      // the store is the input under test, not dead state
+      "solid/no-unused-signal": "off",
     },
   },
 );

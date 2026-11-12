@@ -159,6 +159,7 @@ const FilterScenario = () => (
 );
 
 /** 5. Custom overlay reading an EXTERNAL app signal — updates with zero grid API calls. */
+// eslint-disable-next-line solid/no-module-scope-reactive-primitive -- client-only playground; app-level state outside the grid is the point of this scenario
 const [connectionStatus, setConnectionStatus] = createSignal("connected: 0");
 let connectionCount = 0;
 

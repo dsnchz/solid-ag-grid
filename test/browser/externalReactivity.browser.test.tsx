@@ -12,6 +12,7 @@ import AgGridSolid from "../../src/index";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+// eslint-disable-next-line solid/no-module-scope-reactive-primitive -- browser-only test of app-level (module) state read by a grid component
 const [label, setLabel] = createSignal("connected: 0");
 
 const ExternalSignalOverlay = () => <div data-testid="external-overlay">status: {label()}</div>;

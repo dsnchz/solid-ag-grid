@@ -40,6 +40,7 @@ describe("setComp scope rules (Open question 1 evidence)", () => {
       createRoot((dispose) => {
         const [count, setCount] = createSignal(0);
         const bad = createMemo(() => {
+          // eslint-disable-next-line solid/no-write-in-pure-computation -- the negative control: this write must throw
           setCount(1);
           return count();
         });
