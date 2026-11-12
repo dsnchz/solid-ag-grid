@@ -12,7 +12,6 @@ import {
   createEffect,
   createOptimisticStore,
   createRoot,
-  // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
   createStore,
   flush,
 } from "solid-js";

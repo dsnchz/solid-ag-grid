@@ -37,8 +37,11 @@ export default defineConfig({
         },
       },
       {
-        // no `extends`: this project brings its own solid() so the SSR JSX transform doesn't
-        // leak into the jsdom project (Vitest runs jsdom through the ssr module pipeline too)
+        // `extends: false` (Vitest 5 defaults inline projects to inheriting the root config): this
+        // project brings its own solid() so the SSR JSX transform doesn't leak into the jsdom
+        // project (Vitest runs jsdom through the ssr module pipeline too), and must not also get
+        // the root's client solid()
+        extends: false,
         plugins: [solid({ ssr: true })],
         test: {
           name: "ssr",
@@ -63,7 +66,9 @@ export default defineConfig({
         // prod-compiled JSX: the dev build carries attribution/diagnostics instrumentation
         // that folds out of prod (solid-flow measured ~30% on rc.2 from dev instrumentation
         // alone; rc.7 carries far more), and vanilla AG Grid pays no such tax, so dev-build
-        // numbers understate the renderer against its own baseline. No `extends`: this
+        // numbers understate the renderer against its own baseline. `extends: false` (Vitest 5
+        // defaults inline projects to inheriting the root config, whose dev solid() would load
+        // the dev runtime and break the browser-mode `vitest/browser` virtual module): this
         // project brings its own solid() with dev injection off and names its resolve
         // conditions outright. NOT `mode: "production"`: Vite applies that to
         // process.env.NODE_ENV for the whole Node process, which silently switched the jsdom
@@ -71,6 +76,7 @@ export default defineConfig({
         // resolve conditions do not leak. test/browser/perfHarness.browser.test.tsx pins that
         // the prod runtime really loaded here; test/unit/reactiveGraphBudget.test.tsx needs DEV
         // and therefore pins the inverse for the unit project.
+        extends: false,
         plugins: [solid({ dev: false, refresh: false })],
         resolve: { conditions: ["production", "browser", "module", "default"] },
         // no `define` of process.env.NODE_ENV either: Vitest applies process.env defines to the

@@ -21,7 +21,6 @@ import {
   createEffect,
   createOptimisticStore,
   createRoot,
-  // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
   createStore,
   flush,
   untrack,
@@ -114,17 +113,15 @@ describe("row-handle identity (the probe the structural pointer-diff rests on)",
     const [base, setBase] = createStore<Row[]>(initialRows());
     const calls: Call[] = [];
     const fakeApi = recordingApi(calls);
-    let view!: readonly Row[];
-    let setView!: ReturnType<typeof createOptimisticStore<Row[]>>[1];
-    const dispose = createRoot((d) => {
-      [view, setView] = createOptimisticStore<Row[]>(base);
+    const { view, setView, dispose } = createRoot((d) => {
+      const [view, setView] = createOptimisticStore<Row[]>(base);
       createRowStoreAdapter<Row>({
         store: view,
         getRowKey: (data) => data.id,
         getApi: () => fakeApi,
         processWhenReady: (fn) => fn(),
       });
-      return d;
+      return { view, setView, dispose: d };
     });
     flush();
     const before = untrack(() => view.map((row) => row));
@@ -231,17 +228,15 @@ describe("delta field capture (invalidation-time payloads)", () => {
     const [base] = createStore<Row[]>(initialRows());
     const calls: Call[] = [];
     const fakeApi = recordingApi(calls);
-    let view!: readonly Row[];
-    let setView!: ReturnType<typeof createOptimisticStore<Row[]>>[1];
-    const dispose = createRoot((d) => {
-      [view, setView] = createOptimisticStore<Row[]>(base);
+    const { view, setView, dispose } = createRoot((d) => {
+      const [view, setView] = createOptimisticStore<Row[]>(base);
       createRowStoreAdapter<Row>({
         store: view,
         getRowKey: (data) => data.id,
         getApi: () => fakeApi,
         processWhenReady: (fn) => fn(),
       });
-      return d;
+      return { view, setView, dispose: d };
     });
     flush();
 
@@ -486,11 +481,9 @@ describe("the $TRACK contract (what the structural compute subscribes to)", () =
 
   it("optimistic view: base structural writes read through the chain; an overlay op fires on apply and on revert; field writes never", async () => {
     const [base, setBase] = createStore<Row[]>(initialRows());
-    let view!: readonly Row[];
-    let setView!: ReturnType<typeof createOptimisticStore<Row[]>>[1];
     let runs = 0;
-    const dispose = createRoot((d) => {
-      [view, setView] = createOptimisticStore<Row[]>(base);
+    const { view, setView, dispose } = createRoot((d) => {
+      const [view, setView] = createOptimisticStore<Row[]>(base);
       createEffect(
         () => {
           void (view as unknown as { readonly [key: symbol]: unknown })[$TRACK];
@@ -498,7 +491,7 @@ describe("the $TRACK contract (what the structural compute subscribes to)", () =
         },
         () => undefined,
       );
-      return d;
+      return { view, setView, dispose: d };
     });
     flush();
     expect(runs).toBe(1);

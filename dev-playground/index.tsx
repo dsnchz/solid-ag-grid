@@ -10,7 +10,6 @@ import {
   createOptimistic,
   createOptimisticStore,
   createSignal,
-  // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
   createStore,
   For,
   onSettled,
@@ -59,7 +58,7 @@ const BasicScenario = () => (
 /** 2. Async rowData: loading overlay on first load, SWR refetch keeps rows visible. */
 const AsyncRowsScenario = () => {
   const [generation, setGeneration] = createSignal(1);
-  // eslint-disable-next-line solid/reactivity -- async memos are first-class in Solid 2.0 (plugin predates 2.0); signals are read before the first await
+
   const rows = createMemo(async () => {
     const gen = generation(); // read BEFORE the await — reads after await never track
     await sleep(1500);
@@ -305,7 +304,6 @@ const OptimisticCrudScenario = () => {
     return result;
   };
 
-  // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
   const addRow = action(function* (row: ItemRow) {
     setSaving(true); // process affordance, co-written with the optimistic write
     setOptimisticRows((draft) => {
@@ -317,7 +315,6 @@ const OptimisticCrudScenario = () => {
     });
   });
 
-  // eslint-disable-next-line solid/reactivity -- action() IS the 2.0 mutation scope; its writes are transaction-coordinated (plugin predates 2.0)
   const removeRow = action(function* (id: string) {
     setSaving(true); // co-written flag — auto-reverts at settle
     setOptimisticRows((draft) => draft.filter((row) => row.id !== id)); // gone INSTANTLY

@@ -1,7 +1,6 @@
 // T6 SSR contract: the rowStore adapter must be inert server-side — the shell divs render,
 // no adapter effects are created, no snapshots taken, no console noise, no grid boot.
 import { renderToString } from "@solidjs/web";
-// eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
 import { createStore } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 

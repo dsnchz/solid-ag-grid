@@ -3,7 +3,6 @@
 // perfStreaming (lean renderer: reads `value` only). Answers "where does the per-tick gap go"
 // once the params-spread equality cut was measured as a no-op.
 import { render } from "@solidjs/testing-library";
-import { cdp } from "@vitest/browser/context";
 import type {
   GridApi,
   GridOptions,
@@ -13,6 +12,7 @@ import type {
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import { flush } from "solid-js";
 import { describe, expect, it } from "vitest";
+import { cdp } from "vitest/browser";
 
 import AgGridSolid from "../../src/index";
 

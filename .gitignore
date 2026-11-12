@@ -139,7 +139,9 @@ dev-playground/dist/
 *.tgz
 
 # Vitest browser-mode failure artifacts (transient: attachments and per-test failure screenshots;
-# no test uses screenshot matchers, so there are no baselines to track)
+# no test uses screenshot matchers, so there are no baselines to track). Vitest 5 writes them to
+# .vitest/attachments; Vitest 4 used .vitest-attachments
+.vitest/
 .vitest-attachments/
 test/browser/__screenshots__/
 

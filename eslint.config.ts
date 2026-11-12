@@ -13,6 +13,8 @@ export default defineConfig(
       "**/coverage/**",
       "**/node_modules/**",
       "tmp/**",
+      // gitignored local agent notes / scratch repros (not project code)
+      ".agent/**",
       // standalone consumer app dogfooding the published package — has its own toolchain
       "playground/**",
       // CJS pnpm hook (tooling config, not project code)
@@ -45,12 +47,11 @@ export default defineConfig(
         ...globals.es2022,
       },
     },
-    // eslint-plugin-solid 0.14.x rule types predate ESLint 9's stricter Plugin typing
-    plugins: solid.plugins as unknown as Record<string, import("eslint").ESLint.Plugin>,
+    plugins: solid.plugins,
     rules: {
       ...solid.rules,
-      // eslint-plugin-solid 0.14.x predates Solid 2.0 — disable rules here
-      // (with a comment citing the 2.0 idiom) as they false-positive.
+      // a Solid rule that false-positives on a Solid 2.0 idiom is disabled here, with a comment
+      // citing the idiom
       "@typescript-eslint/no-non-null-assertion": "off",
       // Solid's `let el!: HTMLDivElement` + ref attribute assigns outside ESLint's view
       "no-unassigned-vars": "off",

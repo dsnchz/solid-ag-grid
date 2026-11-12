@@ -235,7 +235,7 @@ apps hit it often (intervals feeding rowData, resize listeners around grids).
 Classes follow the same two-doorways doctrine as data:
 
 - **The outer container is yours, fully reactive**: `class={mode() === "dark" ?
-"grid-dark" : "grid-light"}` on `<AgGridSolid>` — theming installs on inner
+  "grid-dark" : "grid-light"}` on `<AgGridSolid>` — theming installs on inner
   layers and never fights you. Same for `containerStyle`.
 - **Grid-internal elements (rows/cells) take dynamic classes through the grid's
   API**: `rowClassRules` / `cellClassRules` / `rowClass` / `cellClass`. The core

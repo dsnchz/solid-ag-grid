@@ -8,7 +8,6 @@
 import { render } from "@solidjs/testing-library";
 import type { GridApi } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-// eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
 import { createStore } from "solid-js";
 import { describe, expect, it } from "vitest";
 

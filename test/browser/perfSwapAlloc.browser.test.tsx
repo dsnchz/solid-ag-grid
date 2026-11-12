@@ -2,11 +2,11 @@
 // over the same synchronous swap loop as perfSwapProfile — bytes allocated per function, Solid
 // vs vanilla, so an allocation diet targets what actually allocates.
 import { render } from "@solidjs/testing-library";
-import { cdp } from "@vitest/browser/context";
 import type { GridApi, GridOptions } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import { flush } from "solid-js";
 import { describe, expect, it } from "vitest";
+import { cdp } from "vitest/browser";
 
 import AgGridSolid from "../../src/index";
 

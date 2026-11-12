@@ -7,12 +7,7 @@
 import { render } from "@solidjs/testing-library";
 import type { ColDef, IDatasource } from "ag-grid-community";
 import { AllCommunityModule, getGridApi, ModuleRegistry } from "ag-grid-community";
-import {
-  createMemo,
-  // eslint-disable-next-line solid/imports -- createStore is exported from "solid-js" in 2.0 (plugin predates 2.0)
-  createStore,
-  flush,
-} from "solid-js";
+import { createMemo, createStore, flush } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import AgGridSolid from "../../src/index";

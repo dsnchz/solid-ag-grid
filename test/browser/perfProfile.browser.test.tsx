@@ -5,10 +5,10 @@
 // under V8's "(program)" (first-mount codegen/ICs, template cloning) — no single hotspot.
 // Runs in the `perf` project; read the report with `vitest run --project perf perfProfile`.
 import { render } from "@solidjs/testing-library";
-import { cdp } from "@vitest/browser/context";
 import type { GridApi, GridOptions } from "ag-grid-community";
 import { AllCommunityModule, createGrid, ModuleRegistry } from "ag-grid-community";
 import { describe, expect, it } from "vitest";
+import { cdp } from "vitest/browser";
 
 import AgGridSolid from "../../src/index";
 
