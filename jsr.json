@@ -1,6 +1,6 @@
 {
   "name": "@dschz/solid-ag-grid",
-  "version": "36.0.0-next.7",
+  "version": "36.0.0-next.8",
   "license": "MIT",
   "exports": "./src/index.tsx",
   "compilerOptions": {

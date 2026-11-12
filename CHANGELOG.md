@@ -1,5 +1,24 @@
 # @dschz/solid-ag-grid
 
+## 36.0.0-next.8
+
+### Patch Changes
+
+- dcf66ff: Fix: common runtime column changes could disconnect a column's header from the grid. These include moving a column, opening or closing a column group, replacing `columnDefs`, pinning or unpinning a column, and toggling floating filters. Later calls such as a sort, a resize, `deselectAll` or a `rowSelection` change then threw `TypeError: Cannot read properties of null (reading 'toggleCss')` (or `setAriaExpanded` / `getUserCompInstance`), and unmounting the grid could throw the same error. Column headers, group headers and floating filters now hand over to their new place the way `ag-grid-react` does: the old header is torn down before the new one connects. A new test runs these operations against vanilla AG Grid and requires matching output with no errors.
+- a5f4625: A cell value refresh no longer re-runs the cell's wrapper decision, its `ag-cell-value` visibility check or its renderer-identity check when none of them changed. Under heavy value streaming, Solid's dev diagnostics could report this as `WASTED_RECOMPUTE` on `showCellWrapper` or `frameworkRendererInfo`. A Solid-renderer cell now re-runs three reactive scopes per value tick instead of five. Measured rendering cost is unchanged.
+- b69508c: Faster scrolling: each mounted cell builds 9 reactive computations instead of 12. The `<Show keyed>` around a Solid cell renderer is now a single reactive insert, which still remounts the renderer only when its component or `renderKey` changes. Measured against the previous build in the production benchmark (interleaved, medians of 3):
+
+  - **Row swap** (the viewport replacement on scroll): 6.1 → 5.6 ms tall, 5.9 → 5.6 ms wide (vanilla AG Grid: 4.5 / 4.3).
+  - **Memory:** 71.9 → 67.2 KB allocated per swap.
+
+  Initial render and streaming value ticks are unchanged. No behavior change: a value update still reaches the mounted renderer without remounting it, and `refresh()` returning `false` still forces a remount.
+
+- a279a71: Faster scrolling and initial render: each mounted row builds 10 reactive computations instead of 27. A row's layout (cell lanes or a full-width anchor) never changes while it is mounted, so it is now decided once. Each pinned lane appears and disappears on its own, so pinning a column on one side no longer touches the other side's cells. Measured against the previous build in the production benchmark (interleaved, medians of 3):
+
+  - **Row swap** (the viewport replacement on scroll): 5.8 → 5.5 ms on a 10-column grid (vanilla AG Grid: 4.6).
+  - **Initial render:** 46.9 → 44.1 ms (100k rows × 10 columns), 16.4 → 15.1 ms (20k × 100), now level with vanilla.
+  - **Memory:** 67.2 → 62.8 KB allocated per swap.
+
 ## 36.0.0-next.7
 
 ### Patch Changes
