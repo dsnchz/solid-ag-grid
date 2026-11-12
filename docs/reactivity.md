@@ -205,6 +205,8 @@ How the cell got cheap (2026-09-09, 41 → 26 computations per cell, 40 → 34 p
 - the **JS-editor lifecycle**, the **tool-widget lifecycle** and the **renderer refresh bridge** live in the `<Show>` branch that owns their state (the editor session, the cell wrapper, the mounted framework renderer), so a cell that is never edited, has no tools or no framework renderer never creates them and branch disposal is their cleanup;
 - a row creates its six full-width effects only when it **is** full-width — a per-ctrl constant, so gating creation on it is a static branch, not a reactivity hazard.
 
+The second pass (2026-11-12, 23 → 12 computations per cell) took out three `<Show>`s whose conditions were plain signals the ctrl writes: value visibility became one more read in nodes that existed anyway, and the editor branch and the wrapper decision became one reactive hole each (`() => cond() ? untrack(branch) : …`, which owns and disposes what the branch creates, as `Show` did). Row swap dropped by about a third of its overhead over vanilla (field guide ch. 4 has the numbers). Keep `<Show>` where the condition can read async data: its guards handle held transitions.
+
 The rule for new code: before adding a `createEffect` to a hot component, ask which branch owns the state it reacts to, and whether the state has a single writer you control. If it does, write there; if a branch owns it, create the effect inside that branch.
 
 ## See also

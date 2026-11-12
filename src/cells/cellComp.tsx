@@ -124,8 +124,8 @@ const CellComp = (props: CellCompProps) => {
   // refreshEditStyles at construction and on each edit transition; here the same three
   // sites exist and are the ONLY places editDetails / the wrapper change: init() (mount,
   // after setComp — CssClassManager records state even before eGui exists, so never
-  // earlier), the setEditDetails proxy method (edit start/stop), and the cell-wrapper <Show>
-  // branch (mount/cleanup toggles ag-cell-value). No subscription is needed for a state
+  // earlier), the setEditDetails proxy method (edit start/stop), and the cell-wrapper branch
+  // (mount/cleanup toggles ag-cell-value). No subscription is needed for a state
   // whose every writer is ours.
   const applyEditClasses = (details: EditDetails | undefined) => {
     if (!eGui) {
@@ -346,7 +346,7 @@ const CellComp = (props: CellCompProps) => {
           return;
         }
         // no ag-cell-value write (React 36.3 dropped it; vanilla's refreshEditStyles never
-        // had it): the wrapper <Show> branch and init() own that class
+        // had it): the cell-wrapper branch and init() own that class
         cssManager.toggleCss("ag-cell-inline-editing", !!editing && !isPopup);
         cssManager.toggleCss("ag-cell-popup-editing", !!editing && !!isPopup);
         cssManager.toggleCss("ag-cell-not-inline-editing", !editing || !!isPopup);
@@ -366,12 +366,24 @@ const CellComp = (props: CellCompProps) => {
     compBean = context.destroyBean(compBean);
   });
 
+  // React renders the cell value alongside the editor only for popup editing; inline editing
+  // replaces it (setRenderDetails(undefined) clears it in the same batch — this guard keeps
+  // structural parity for the transition frame)
+  const cellValueVisible = () => {
+    const details = editDetails();
+    return details == null || !!details.popup;
+  };
+
   // remount the framework renderer ONLY when the component class or renderKey changes; param
-  // updates flow reactively through the spread (Solid analog of React's key + prop propagation)
+  // updates flow reactively through the spread (Solid analog of React's key + prop propagation).
+  // Value visibility (React's `showCellValue`) is folded into this memo and into rawValue
+  // instead of a <Show> around the value (row-swap diet): with no details both already render
+  // nothing, so the only extra condition is "not inline-editing" — one more read in nodes that
+  // exist anyway. The JS renderer's element needs no check: inline editing suppresses it.
   const frameworkRendererInfo = createMemo<FrameworkRendererInfo | undefined>(
     () => {
       const details = compDetails();
-      if (!details?.componentFromFramework) {
+      if (!details?.componentFromFramework || !cellValueVisible()) {
         return undefined;
       }
       return { Comp: details.componentClass, key: renderKey() };
@@ -388,7 +400,7 @@ const CellComp = (props: CellCompProps) => {
   // second insert per cell (per-cell diet 5/5)
   const rawValue = () => {
     // null = details without a renderer; undefined = no details yet
-    if (compDetails() !== null) {
+    if (compDetails() !== null || !cellValueVisible()) {
       return undefined;
     }
     const raw = value() as { toString?: () => string } | null | undefined;
@@ -463,18 +475,8 @@ const CellComp = (props: CellCompProps) => {
     </>
   );
 
-  // React renders the cell value alongside the editor only for popup editing; inline editing
-  // replaces it (setRenderDetails(undefined) clears it in the same batch — this guard keeps
-  // structural parity for the transition frame)
-  const cellValueVisible = () => {
-    const details = editDetails();
-    return details == null || !!details.popup;
-  };
-
+  // the ag-cell-value span (wrapper path only) exists while the value shows
   const valueVisible = () => cellValueVisible() && hasDetails();
-
-  // no wrapper: the value content sits directly in the cell (the cell carries ag-cell-value)
-  const bareValueJsx = () => <Show when={valueVisible()}>{valueOrCellCompJsx()}</Show>;
 
   // wrapper: the value content sits in the ag-cell-value span, absent while inline editing
   // (vanilla's takeCellValueOut). getParentOfValue must stop returning the span once it
@@ -501,192 +503,196 @@ const CellComp = (props: CellCompProps) => {
   );
 
   // framework inline editor / popup editor branches; JS inline editors mount imperatively via
-  // the JS-editor effect above (jsxEditValue returns null for them)
-  const showEditValueJsx = () => (
-    <Show when={editDetails()} keyed>
-      {(details) => {
-        // JS (non-framework) editor: instance creation via newAgStackInstance, inline gui
-        // attach + afterGuiAttached, destruction when the edit session ends. Effect
-        // classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
-        // instance — SCOPED to the edit session: the keyed <Show> branch is the owner, so the
-        // effect exists only while this cell is being edited and its cleanup runs when the
-        // branch is disposed (editDetails changes or clears). A cell that is never edited
-        // never creates it (per-cell diet, PERF: reactiveGraphBudget.test.tsx).
-        if (!details.compDetails.componentFromFramework && !context.isDestroyed()) {
-          createEffect(
-            () => undefined,
-            () => {
-              const compDetails = details.compDetails;
-              const isPopup = details.popup === true;
+  // the JS-editor effect above (jsxEditValue returns null for them).
+  // ONE INSERT, NOT A KEYED <Show> (row-swap diet): the hole's computation re-runs when
+  // editDetails changes identity (keyed semantics), builds the branch untracked, owns
+  // everything the branch creates and disposes it on its next run — a never-edited cell pays
+  // the hole alone instead of a keyed Show's two memos plus the hole.
+  const showEditValueJsx = () => {
+    const details = editDetails();
+    return details ? untrack(() => editValueBranch(details)) : undefined;
+  };
 
-              const cellEditorPromise = compDetails.newAgStackInstance();
-              // an editor resolving after the branch is disposed (edit session over, newer
-              // session, unmount) is destroyed unshown, leaving any newer one alone
-              let destroyed = false;
-              let shownEditor: ICellEditorComp | undefined;
+  const editValueBranch = (details: EditDetails) => {
+    // JS (non-framework) editor: instance creation via newAgStackInstance, inline gui
+    // attach + afterGuiAttached, destruction when the edit session ends. Effect
+    // classification (§5.1 bridge category 2): signal-keyed lifecycle of a non-Solid
+    // instance — SCOPED to the edit session: the branch run of the hole above is the
+    // owner, so the effect exists only while this cell is being edited and its cleanup
+    // runs when that run is disposed (editDetails changes or clears). A cell that is never
+    // edited never creates it (per-cell diet, PERF: reactiveGraphBudget.test.tsx).
+    if (!details.compDetails.componentFromFramework && !context.isDestroyed()) {
+      createEffect(
+        () => undefined,
+        () => {
+          const compDetails = details.compDetails;
+          const isPopup = details.popup === true;
 
-              cellEditorPromise.then((cellEditor: ICellEditorComp) => {
-                if (destroyed) {
-                  context.destroyBean(cellEditor);
-                  return;
-                }
-                if (!cellEditor) {
-                  return;
-                }
+          const cellEditorPromise = compDetails.newAgStackInstance();
+          // an editor resolving after the branch is disposed (edit session over, newer
+          // session, unmount) is destroyed unshown, leaving any newer one alone
+          let destroyed = false;
+          let shownEditor: ICellEditorComp | undefined;
 
-                const compGui = cellEditor.getGui();
-
-                setCellEditorRef(cellEditor);
-                shownEditor = cellEditor;
-
-                if (!isPopup) {
-                  const parentEl = forceWrapper ? eCellWrapper : eGui;
-                  parentEl?.appendChild(compGui);
-
-                  cellEditor.afterGuiAttached?.();
-                }
-
-                setJsEditorComp(cellEditor);
-              });
-
-              return () => {
-                // runs at branch disposal — which is why jsEditorComp has ownedWrite
-                destroyed = true;
-                if (!shownEditor) {
-                  return;
-                }
-                const compGui = shownEditor.getGui();
-                cellCtrl.disableEditorTooltipFeature();
-                context.destroyBean(shownEditor);
-                setCellEditorRef(undefined);
-                setJsEditorComp(undefined);
-
-                compGui?.remove();
-              };
-            },
-          );
-        }
-        return jsxEditValue(
-          details,
-          setCellEditorRef,
-          eGui!,
-          cellCtrl,
-          jsEditorComp,
-          editorParamsVersion,
-        );
-      }}
-    </Show>
-  );
-
-  const showCellJsx = () => (
-    <Show
-      when={showCellWrapper()}
-      fallback={
-        <>
-          {bareValueJsx()}
-          {showEditValueJsx()}
-        </>
-      }
-    >
-      {(_wrapper) => {
-        // same unmount-clearing contract as eCellValue above; the wrapper's presence IS the
-        // ag-cell-value class state (vanilla refreshWrapper: toggleCss("ag-cell-value",
-        // !usingWrapper)), so the branch writes it on mount and restores it on cleanup
-        cssManager.toggleCss("ag-cell-value", false);
-        onCleanup(() => {
-          eCellWrapper = undefined;
-          cssManager.toggleCss("ag-cell-value", true);
-        });
-
-        // Tool widgets (row drag / dnd source / selection checkbox) are JS component beans.
-        // React creates them in the cell-wrapper ref callback and inserts 'afterbegin' (final
-        // DOM order: rowDrag, dnd, selection, value) — Solid refs don't re-run on signal
-        // changes, so the instance lifecycle is an effect and the getGui() elements insert as
-        // derived JSX ahead of the value span in that same order (§5.1: derived JSX insertion
-        // beats effect-appendChild). Effect classification: signal-keyed lifecycle of
-        // non-Solid instances — SCOPED to the wrapper branch (per-cell diet 2/5): the wrapper
-        // exists exactly when tools (or forceWrapper) do, so a plain cell never creates this.
-        // internal bridge signal: the cleanup also runs at branch disposal (owned scope, where
-        // writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
-        const [toolWidgets, setToolWidgets] = createSignal<ToolWidgetElements | undefined>(
-          undefined,
-          { ownedWrite: true },
-        );
-        createEffect(
-          () => ({
-            selection: includeSelection(),
-            dnd: includeDndSource(),
-            rowDrag: includeRowDrag(),
-          }),
-          (include) => {
-            if (!cellCtrl.isAlive() || context.isDestroyed()) {
+          cellEditorPromise.then((cellEditor: ICellEditorComp) => {
+            if (destroyed) {
+              context.destroyBean(cellEditor);
+              return;
+            }
+            if (!cellEditor) {
               return;
             }
 
-            const comps: AgComponent[] = [];
-            const widgets: ToolWidgetElements = {};
-            const addComp = (slot: keyof ToolWidgetElements, comp: AgComponent | undefined) => {
-              if (comp) {
-                comps.push(comp);
-                widgets[slot] = comp.getGui();
-              }
-            };
+            const compGui = cellEditor.getGui();
 
-            if (include.selection) {
-              addComp("selection", cellCtrl.createSelectionCheckbox());
-            }
-            if (include.dnd) {
-              addComp("dnd", cellCtrl.createDndSource());
-            }
-            if (include.rowDrag) {
-              rowDragComp = cellCtrl.createRowDragComp();
-              addComp("rowDrag", rowDragComp);
-              rowDragComp?.refreshVisibility();
-            }
-            setToolWidgets(widgets);
+            setCellEditorRef(cellEditor);
+            shownEditor = cellEditor;
 
-            return () => {
-              setToolWidgets(undefined);
-              rowDragComp = undefined;
-              for (const comp of comps) {
-                // Solid removes the inserted elements when the signal clears / the wrapper
-                // unmounts
-                context.destroyBean(comp);
-              }
-            };
-          },
-        );
-        // the drag handle re-evaluates its visibility when the cell's compDetails change
-        // (React: in the refresh layout effect, for every cell; here only a drag cell pays)
-        if (untrack(includeRowDrag)) {
-          createEffect(
-            () => compDetails(),
-            (compDetails, prev) => {
-              if (prev != null && compDetails != null && compDetails !== prev) {
-                rowDragComp?.refreshVisibility();
-              }
-            },
-          );
-        }
-        return (
-          <div
-            class="ag-cell-wrapper"
-            role="presentation"
-            ref={(el) => {
-              eCellWrapper = el;
-              init();
-            }}
-          >
-            {toolWidgets()?.rowDrag}
-            {toolWidgets()?.dnd}
-            {toolWidgets()?.selection}
-            {spanValueJsx()}
-            {showEditValueJsx()}
-          </div>
-        );
-      }}
-    </Show>
+            if (!isPopup) {
+              const parentEl = forceWrapper ? eCellWrapper : eGui;
+              parentEl?.appendChild(compGui);
+
+              cellEditor.afterGuiAttached?.();
+            }
+
+            setJsEditorComp(cellEditor);
+          });
+
+          return () => {
+            // runs at branch disposal — which is why jsEditorComp has ownedWrite
+            destroyed = true;
+            if (!shownEditor) {
+              return;
+            }
+            const compGui = shownEditor.getGui();
+            cellCtrl.disableEditorTooltipFeature();
+            context.destroyBean(shownEditor);
+            setCellEditorRef(undefined);
+            setJsEditorComp(undefined);
+
+            compGui?.remove();
+          };
+        },
+      );
+    }
+    return jsxEditValue(
+      details,
+      setCellEditorRef,
+      eGui!,
+      cellCtrl,
+      jsEditorComp,
+      editorParamsVersion,
+    );
+  };
+
+  // ONE HOLE, NOT A <Show> (row-swap diet): showCellWrapper is already a boolean memo, so the
+  // hole re-runs only when the wrapper decision flips; each run builds its branch untracked
+  // and owns it, disposing the previous branch's effects and cleanups.
+  const showCellJsx = () => (showCellWrapper() ? untrack(wrapperBranchJsx) : untrack(bareCellJsx));
+
+  const bareCellJsx = () => (
+    <>
+      {valueOrCellCompJsx()}
+      {showEditValueJsx()}
+    </>
   );
+
+  const wrapperBranchJsx = () => {
+    // same unmount-clearing contract as eCellValue above; the wrapper's presence IS the
+    // ag-cell-value class state (vanilla refreshWrapper: toggleCss("ag-cell-value",
+    // !usingWrapper)), so the branch writes it on mount and restores it on cleanup
+    cssManager.toggleCss("ag-cell-value", false);
+    onCleanup(() => {
+      eCellWrapper = undefined;
+      cssManager.toggleCss("ag-cell-value", true);
+    });
+
+    // Tool widgets (row drag / dnd source / selection checkbox) are JS component beans.
+    // React creates them in the cell-wrapper ref callback and inserts 'afterbegin' (final
+    // DOM order: rowDrag, dnd, selection, value) — Solid refs don't re-run on signal
+    // changes, so the instance lifecycle is an effect and the getGui() elements insert as
+    // derived JSX ahead of the value span in that same order (§5.1: derived JSX insertion
+    // beats effect-appendChild). Effect classification: signal-keyed lifecycle of
+    // non-Solid instances — SCOPED to the wrapper branch (per-cell diet 2/5): the wrapper
+    // exists exactly when tools (or forceWrapper) do, so a plain cell never creates this.
+    // internal bridge signal: the cleanup also runs at branch disposal (owned scope, where
+    // writes throw REACTIVE_WRITE_IN_OWNED_SCOPE in dev) — opt in narrowly
+    const [toolWidgets, setToolWidgets] = createSignal<ToolWidgetElements | undefined>(undefined, {
+      ownedWrite: true,
+    });
+    createEffect(
+      () => ({
+        selection: includeSelection(),
+        dnd: includeDndSource(),
+        rowDrag: includeRowDrag(),
+      }),
+      (include) => {
+        if (!cellCtrl.isAlive() || context.isDestroyed()) {
+          return;
+        }
+
+        const comps: AgComponent[] = [];
+        const widgets: ToolWidgetElements = {};
+        const addComp = (slot: keyof ToolWidgetElements, comp: AgComponent | undefined) => {
+          if (comp) {
+            comps.push(comp);
+            widgets[slot] = comp.getGui();
+          }
+        };
+
+        if (include.selection) {
+          addComp("selection", cellCtrl.createSelectionCheckbox());
+        }
+        if (include.dnd) {
+          addComp("dnd", cellCtrl.createDndSource());
+        }
+        if (include.rowDrag) {
+          rowDragComp = cellCtrl.createRowDragComp();
+          addComp("rowDrag", rowDragComp);
+          rowDragComp?.refreshVisibility();
+        }
+        setToolWidgets(widgets);
+
+        return () => {
+          setToolWidgets(undefined);
+          rowDragComp = undefined;
+          for (const comp of comps) {
+            // Solid removes the inserted elements when the signal clears / the wrapper
+            // unmounts
+            context.destroyBean(comp);
+          }
+        };
+      },
+    );
+    // the drag handle re-evaluates its visibility when the cell's compDetails change
+    // (React: in the refresh layout effect, for every cell; here only a drag cell pays)
+    if (untrack(includeRowDrag)) {
+      createEffect(
+        () => compDetails(),
+        (compDetails, prev) => {
+          if (prev != null && compDetails != null && compDetails !== prev) {
+            rowDragComp?.refreshVisibility();
+          }
+        },
+      );
+    }
+    return (
+      <div
+        class="ag-cell-wrapper"
+        role="presentation"
+        ref={(el) => {
+          eCellWrapper = el;
+          init();
+        }}
+      >
+        {toolWidgets()?.rowDrag}
+        {toolWidgets()?.dnd}
+        {toolWidgets()?.selection}
+        {spanValueJsx()}
+        {showEditValueJsx()}
+      </div>
+    );
+  };
 
   const renderCellJsx = () => (
     <div

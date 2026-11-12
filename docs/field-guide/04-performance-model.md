@@ -79,7 +79,7 @@ is pinned exactly:
 
 |                       | before the diet | now                                                       |
 | --------------------- | --------------- | --------------------------------------------------------- |
-| computations per cell | 41              | 23                                                        |
+| computations per cell | 41              | 12 (2026-11-12 Show diet, see below)                      |
 | signals per cell      | 11              | 11 (three `renderDetails` parts replaced one object)      |
 | computations per row  | 40              | 27 (36.3 port: lanes fed by the ctrl, no partition memos) |
 | signals per row       | 11              | 5                                                         |
@@ -88,15 +88,31 @@ Raise a budget only with a design note. A change that adds an effect, memo or
 `Show` branch to the cell or row mount fails here first — before it shows up as
 scroll jank on a wide grid.
 
-What is left per cell is load-bearing: four `Show` branches (wrapper,
-value-visible, framework renderer, editor — the value-visible and editor
-branches cannot merge, a single insert would remount the value when a popup
-editor opens), two memos with equality cuts, and the JSX inserts. The remaining
-~2.5 ms per viewport is the graph's floor plus allocation; the CDP profile puts
-Solid runtime mount + dispose at ~1.6 ms, our component bodies at ~0.7 ms, GC
-and V8 internals for the rest. Recycling components across swaps would remove
-most of it and is rejected: it breaks the ctrl→comp `setComp` contract the whole
-port rests on, and neither vanilla nor React recycles.
+What is left per cell: one keyed `Show` (the framework renderer — it remounts on
+a class or `renderKey` change and scopes the refresh bridge), two memos with
+equality cuts (wrapper decision, renderer identity) and the JSX holes. The
+2026-11-12 Show diet removed three `<Show>`s, each a stack of two or three memos
+over a condition that was already cheap:
+
+- **value visibility** (React's `showCellValue`) is one more read in the
+  framework-renderer memo and in `rawValue`: with no details both already
+  render nothing, so only "not inline-editing" had to be folded in;
+- the **editor branch** and the **wrapper/no-wrapper** decision are one hole
+  each: `() => cond() ? untrack(branch) : …`. The hole's computation re-runs
+  only when its input changes (the editor on `editDetails` identity — keyed
+  semantics; the wrapper on the boolean memo), builds the branch untracked, and
+  owns everything the branch creates, disposing it on the next run, which is
+  what the `Show` gave us. A `Show` is still the tool when the condition reads
+  async data (its guards handle held transitions); these conditions are plain
+  signals the ctrl writes.
+
+Measured (prod posture, interleaved A/B, medians of 3): row swap 6.2 → 5.5 ms
+tall (vanilla 4.1; ×1.51 → ×1.31) and 6.1 → 5.4 ms wide (vanilla 4.0), about a
+third of the overhead over vanilla; allocation 92 → 73 KB per swap; streaming
+ticks 0.93 → 0.80 ms. The rest of the gap is the graph's floor plus
+allocation. Recycling components across swaps would remove most of it and is
+rejected: it breaks the ctrl→comp `setComp` contract the whole port rests on,
+and neither vanilla nor React recycles.
 
 ## How to measure (and the two traps)
 

@@ -105,8 +105,11 @@ const measure = async (rows: number, cols: number) => {
 //     design — three part-signals replace one object so a value tick touches only the text)
 //   2026-11-11 AG Grid 36.3 port: row 27 / 5 (cell lanes fed straight from the ctrl's
 //     per-lane setCellCtrls instead of partition memos; pinned lane widths written to the DOM)
+//   2026-11-12 Show diet: cell 12 / 11 (value visibility folded into the framework-renderer
+//     memo and rawValue instead of a non-keyed <Show>; the editor branch and the
+//     wrapper/no-wrapper decision are one hole each instead of a <Show>)
 const BUDGET = {
-  cell: { computations: 23, signals: 11 },
+  cell: { computations: 12, signals: 11 },
   row: { computations: 27, signals: 5 },
 };
 
