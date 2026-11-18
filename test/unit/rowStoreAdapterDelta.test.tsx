@@ -372,10 +372,7 @@ describe("structural delta (unchanged rows do no heavy work)", () => {
 });
 
 describe("the rebind law (optimistic settle-confirm handle swap)", () => {
-  // KNOWN UPSTREAM REGRESSION (solid rc.22 – 2.0.0, solidjs/solid#5007): the optimistic add
-  // never reaches the $TRACK-only structural compute. it.fails flips red once the fix ships:
-  // delete the marker then
-  it.fails("post-settle field writes on a confirmed row still project; the settle itself is emission-free", async () => {
+  it("post-settle field writes on a confirmed row still project; the settle itself is emission-free", async () => {
     const [base, setBase] = createStore<Row[]>(initialRows());
     const calls: Call[] = [];
     const fakeApi = recordingApi(calls);
@@ -505,10 +502,7 @@ describe("the $TRACK contract (what the structural compute subscribes to)", () =
     dispose();
   });
 
-  // KNOWN UPSTREAM REGRESSION (solid rc.22 – 2.0.0, solidjs/solid#5007): a $TRACK-only reader
-  // is served the truth on apply and never re-runs on revert. it.fails flips red once the fix
-  // ships: delete the marker then
-  it.fails("optimistic view: base structural writes read through the chain; an overlay op fires on apply and on revert; field writes never", async () => {
+  it("optimistic view: base structural writes read through the chain; an overlay op fires on apply and on revert; field writes never", async () => {
     const [base, setBase] = createStore<Row[]>(initialRows());
     let runs = 0;
     const { view, setView, dispose } = createRoot((d) => {

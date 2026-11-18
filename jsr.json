@@ -8,9 +8,9 @@
     "jsxImportSource": "@solidjs/web"
   },
   "imports": {
-    "solid-js": "npm:solid-js@^2.0.0",
-    "@solidjs/web": "npm:@solidjs/web@^2.0.0",
-    "@solidjs/web/jsx-runtime": "npm:@solidjs/web@^2.0.0/jsx-runtime",
+    "solid-js": "npm:solid-js@^2.0.1",
+    "@solidjs/web": "npm:@solidjs/web@^2.0.1",
+    "@solidjs/web/jsx-runtime": "npm:@solidjs/web@^2.0.1/jsx-runtime",
     "ag-grid-community": "npm:ag-grid-community@36.3.0",
     "ag-stack": "npm:ag-stack@36.3.0"
   },

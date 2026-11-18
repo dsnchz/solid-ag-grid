@@ -298,11 +298,10 @@ describe("createRowStoreAdapter bookkeeping", () => {
     dispose();
   });
 
-  // KNOWN UPSTREAM REGRESSION (solid rc.22 – 2.0.0, solidjs/solid#5007): a reader that
-  // subscribes only through $TRACK never joins the optimistic lane, so the structural compute
-  // is served the truth on apply and never re-runs on revert. Bisected to c98168082 (#4729).
-  // it.fails flips red once the fix ships: delete the marker then
-  it.fails("optimistic revert projects as a plain remove (no optimistic-specific code path)", async () => {
+  // Also pins the fix for solidjs/solid#5007 (rc.22 – 2.0.0): a reader that subscribed only
+  // through $TRACK never joined the optimistic lane, so this add was never projected. Fixed in
+  // Solid 2.0.1 (#5010), the package's peer floor.
+  it("optimistic revert projects as a plain remove (no optimistic-specific code path)", async () => {
     const [rows] = createStore<Row[]>(initialRows());
     const [optimistic, setOptimistic] = createOptimisticStore<Row[]>(rows);
     const calls: Call[] = [];

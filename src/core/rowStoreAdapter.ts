@@ -226,11 +226,8 @@ export const createRowStoreAdapter = <TData>(
   // (latency policy: structural = instant paint). NOT deferred: the first apply is
   // load-bearing — it attaches projections to seeded entries and diffs any mutations that
   // landed between adapter creation and the first flush against the seed baseline.
-  // KNOWN UPSTREAM REGRESSION (solid rc.22 – 2.0.0, solidjs/solid#5007): on an optimistic view,
-  // a reader that subscribes only through `$TRACK` never joins the guess lane, so optimistic
-  // structural writes are not projected until settle and a revert is never projected. Not
-  // worked around here (upstream first); the it.fails pins in the rowStore tests flip red when
-  // the fix ships.
+  // On an optimistic view, a `$TRACK`-only reader joins the guess lane only on Solid >= 2.0.1
+  // (solidjs/solid#5007, broken rc.22 – 2.0.0): the reason for the `^2.0.1` peer floor.
   createEffect(
     () => {
       void (store as unknown as { readonly [key: symbol]: unknown })[$TRACK];

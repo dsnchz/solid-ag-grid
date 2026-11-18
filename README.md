@@ -31,8 +31,8 @@ Peer dependencies:
 | Package             | Version  | Notes                                                               |
 | ------------------- | -------- | ------------------------------------------------------------------- |
 | `ag-grid-community` | `36.3.0` | The grid core, **exact version**. Our major tracks AG Grid's major. |
-| `solid-js`          | `^2.0.0` | **Solid 2.0 required.** Solid 1.x is not supported.                 |
-| `@solidjs/web`      | `^2.0.0` | Same version as `solid-js`.                                         |
+| `solid-js`          | `^2.0.1` | **Solid 2.0.1 or later required.** Solid 1.x is not supported.      |
+| `@solidjs/web`      | `^2.0.1` | Same version as `solid-js`.                                         |
 
 Two things worth knowing:
 

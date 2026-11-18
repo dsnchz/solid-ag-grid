@@ -79,10 +79,10 @@
     "@changesets/cli": "3.0.3",
     "@eslint/js": "^10.0.1",
     "@solid-primitives/resize-observer": "4.0.0",
-    "@solidjs/diagnostics": "2.0.0",
+    "@solidjs/diagnostics": "2.0.1",
     "@solidjs/testing-library": "1.0.0-rc.2",
     "@solidjs/vite-plugin": "3.0.1",
-    "@solidjs/web": "2.0.0",
+    "@solidjs/web": "2.0.1",
     "@types/node": "^26.6.6",
     "@vitest/browser": "^5.1.0",
     "@vitest/browser-playwright": "^5.1.0",
@@ -97,16 +97,16 @@
     "oxfmt": "0.78.0",
     "playwright": "^1.65.0",
     "solid-checker": "0.2.2",
-    "solid-js": "2.0.0",
+    "solid-js": "2.0.1",
     "typescript": "^7.0.2",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
   },
   "peerDependencies": {
-    "@solidjs/web": "^2.0.0",
+    "@solidjs/web": "^2.0.1",
     "ag-grid-community": "36.3.0",
-    "solid-js": "^2.0.0"
+    "solid-js": "^2.0.1"
   },
   "packageManager": "pnpm@9.0.0"
 }

@@ -218,7 +218,7 @@ The adapter does per-row work, not per-array work:
 
 Measured (informational browser benchmark, 10,000 rows, real Chromium — `test/browser/rowStorePerf.browser.test.tsx`): a single-row **add** paints in **~15 ms** store-write→painted-row; a single-row **field update** paints in **~58 ms** store-write→painted-cell — a figure that _includes_ the grid's own `applyTransactionAsync` batching window (~50 ms by default), i.e. it is dominated by the grid's deliberate batching, not adapter CPU. The same benchmark asserts the updates are surgical: every other rendered row keeps its exact DOM elements.
 
-> Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.0` peer floor. Verified against each Solid release we bump to.
+> Delta capture relies on per-item `snapshot(row)` / `deep(row)` returning plain data even on derived optimistic views — guaranteed since the beta.24 snapshot fix (earlier betas could leak a live proxy across the boundary), and covered by the package's `^2.0.1` peer floor. Verified against each Solid release we bump to.
 
 ### Optimistic views
 
@@ -228,7 +228,7 @@ This relies on the fix for [solidjs/solid#3323](https://github.com/solidjs/solid
 
 **Fixed in Solid 2.0.0-rc.22:** on rc.14 – rc.21, an optimistic write to one row re-ran every row's `deep(row)` projection, so each optimistic edit queued the whole store as an `update` batch. The fix ([solidjs/solid#4729](https://github.com/solidjs/solid/pull/4729)) restored per-row capture.
 
-**Known Solid regression, rc.22 – 2.0.0 ([solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007)):** the same upstream change stopped optimistic **structural** writes (push, splice, reorder, index replacement) from reaching readers that subscribe through `$TRACK`, which is how the adapter watches the array. On an optimistic view, a pending add or remove is not painted until the action settles, and a failed action's revert is not projected. Optimistic field edits and all base-store writes are unaffected. This package's tests for the optimistic structural path are marked as known failures and will flag the Solid release that fixes it.
+**Fixed in Solid 2.0.1:** on rc.22 – 2.0.0, the same upstream change stopped optimistic **structural** writes (push, splice, reorder, index replacement) from reaching readers that subscribe through `$TRACK`, which is how the adapter watches the array, so a pending add or remove was not painted until the action settled and a failed action's revert was not projected ([solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007)). The package's `^2.0.1` peer floor excludes the affected releases.
 
 ## See also
 
