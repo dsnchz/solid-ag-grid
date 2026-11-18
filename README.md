@@ -14,7 +14,7 @@ Every header, row, and cell in the grid is rendered by Solid — this is a deep 
 
 Because the rendering layer is Solid, your components are real Solid components living in the real reactive graph: cell renderers can read app signals and update with zero grid API calls, async data suspends into the grid's loading states, and refetches get stale-while-revalidate semantics for free.
 
-> **Status: release candidate.** Targets **AG Grid v36** and **Solid 2.0** only. Published under the `next` dist-tag; the stable `36.0.0` release waits on an upstream Solid fix ([solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007)). See [Status & roadmap](#status--roadmap).
+> **Status: stable.** Targets **AG Grid v36** and **Solid 2.0** only. See [Status & roadmap](#status--roadmap).
 
 ## Installation
 
@@ -250,7 +250,7 @@ The [Maintainer's Field Guide](./docs/field-guide/00-how-to-use-this-guide.md) i
 
 ## Status & roadmap
 
-- **Release candidate**, developed and tested against `solid-js` / `@solidjs/web` 2.0.0. Published under the `next` dist-tag; `36.0.0` ships once [solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007) (optimistic structural writes in `rowStore`) is fixed upstream.
+- **Stable**, on Solid 2.0. Developed and tested against `solid-js` / `@solidjs/web` 2.0.1.
 - **Versioning:** our major follows AG Grid's major — `36.x` supports AG Grid v36.
 - **Tested:** across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
 - **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture.
