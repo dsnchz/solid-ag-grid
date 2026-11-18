@@ -242,6 +242,7 @@ const App = () => {
 - [Reactivity guide](./docs/reactivity.md) — the full doctrine and footgun catalog.
 - [Row store guide](./docs/row-store.md) — declarative row data via `rowStore`: the contract, both optimistic failure-UX recipes, canonical affordances, performance, and when NOT to use it.
 - [SSR guide](./docs/ssr.md) — the SSR contract, framework setup, and the server-import limitation.
+- [Agent cheatsheet](./llms.txt) — a dense summary for coding agents, shipped in the npm package (`node_modules/@dschz/solid-ag-grid/llms.txt`).
 - AG Grid feature docs: [ag-grid.com](https://www.ag-grid.com/javascript-data-grid/getting-started/) — the grid core is identical across frameworks, so all feature documentation applies. Enterprise features require `ag-grid-enterprise` and a license.
 
 ## Maintainers

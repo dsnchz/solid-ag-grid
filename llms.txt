@@ -1,0 +1,170 @@
+# @dschz/solid-ag-grid — agent cheatsheet
+
+AG Grid v36 for SolidJS 2.0, rendered by Solid (rows, cells and headers are Solid components;
+AG Grid's core drives them). Solid 2.0 only: solid-js@^2.0.1 with @solidjs/web on the same
+version. Not the old unscoped `solid-ag-grid` package (AG Grid 31, Solid 1.x).
+
+```bash
+npm install @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js @solidjs/web
+```
+
+- `ag-grid-community` must be EXACTLY the version this release pins (36.3.0 for 36.x today; check
+  the package's peerDependencies). AG Grid internals are not semver-stable; never use a caret range.
+- tsconfig: `"jsx": "preserve"`, `"jsxImportSource": "@solidjs/web"`.
+
+```tsx
+import { AgGridSolid } from "@dschz/solid-ag-grid"; // also the default export
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+
+ModuleRegistry.registerModules([AllCommunityModule]); // once, before any grid mounts
+
+const App = () => (
+  <div style={{ height: "500px" }}> {/* the grid fills its parent: give it a size */}
+    <AgGridSolid columnDefs={[{ field: "make" }, { field: "price" }]} rowData={rows()} />
+  </div>
+);
+```
+
+## Core conventions
+
+- Every `GridOptions` key is a prop on `<AgGridSolid>`, tracked per key: when `rowData={rows()}`
+  changes, only `rowData` is pushed to the grid. Produce a NEW array/object to change an option;
+  in-place mutation of a value you passed is invisible.
+- Config objects are NOT tracked. A signal read inside a colDef, `cellRendererParams`,
+  `defaultColDef`, `context` or the `gridOptions` bag happens once. Make the option itself
+  reactive: `const cols = createMemo(() => [{ field: "price", hide: hidePrice() }]);` then
+  `columnDefs={cols()}`.
+- `gridOptions={...}` is merged once at creation (parity with ag-grid-react). Use individual
+  props for anything that changes.
+- Extra props: `modules`, `class`, `containerStyle`, `rowStore`, `ref`, `componentWrappingElement`.
+- Grid API: `ref={(r) => (grid = r)}`, then `grid.api.selectAll()` etc. `AgGridSolidRef` is `{ api }`.
+  The ref fires once the grid has booted (client-side, after mount).
+- Modules can be global (`ModuleRegistry`), per grid (`modules={[...]}`), or per subtree
+  (`<AgGridProvider modules={[...]} licenseKey="...">`). Enterprise features need
+  `ag-grid-enterprise` modules and a license key.
+- Themes: the Theming API is the default (no CSS imports). For the legacy CSS themes, set
+  `theme="legacy"`, import `ag-grid-community/styles/*.css`, and put the theme class on the parent.
+
+## Spreading config, destructuring, async
+
+```tsx
+const cfg = { columnDefs, get rowData() { return data(); } }; // OK: getter defers the read
+<AgGridSolid {...cfg} />;
+const bad = { columnDefs, rowData: data() };                    // FROZEN: read eagerly, never tracked
+const MyCell = ({ value }) => <span>{value}</span>;              // BROKEN: destructured props never update
+const MyCell = (props: CustomCellRendererProps) => <span>{props.value}</span>; // correct
+```
+
+- Async rowData: pass the pending value directly. `const rows = createMemo(() => fetchRows(q()));`
+  then `rowData={rows()}`. First load shows the loading overlay; a refetch keeps the previous
+  rows until the new data resolves (stale-while-revalidate, no overlay flash).
+- Explicit overlay: `loading={isPending(() => rows())}` is safe as a grid prop. If you render your
+  own `isPending` indicator, wrap it in `<Loading>`.
+- In async computations, read every signal BEFORE the first `await`; reads after it never track.
+- `context={{ userId }}` (pass accessors), not `context={{ userId: userId() }}` (a frozen snapshot).
+
+## Custom components (plain Solid components)
+
+Pass the component itself where AG Grid takes a component: `cellRenderer`, `cellEditor`, `filter`,
+`floatingFilter`, `headerComponent`, `loadingCellRenderer`, `loadingOverlayComponent`,
+`noRowsOverlayComponent`, `tooltipComponent`, `statusPanel`, `toolPanel`, `menuItem`, and so on.
+Props types are exported: `CustomCellRendererProps`, `CustomCellEditorProps`, `CustomFilterProps`,
+`CustomFloatingFilterProps`, `CustomHeaderProps`, `CustomTooltipProps`, `CustomStatusPanelProps`,
+`CustomToolPanelProps`, `CustomLoadingOverlayProps`, `CustomNoRowsOverlayProps`, ...
+
+- Components run once. The grid pushes new props into the live component on refresh (no remount):
+  read `props.x` in JSX or memos, not once in the body.
+- They live in your app's reactive graph: a renderer or overlay can read any app signal directly
+  and updates with no grid API call. Do not route app state through `context` or refresh calls.
+- `reactiveCustomComponents` defaults to true; keep it on.
+- Callbacks are registered with hooks, called once in the component body (no dependency arrays):
+  `useGridCellEditor`, `useGridFilter`, `useGridFloatingFilter`, `useGridDate`, `useGridMenuItem`,
+  `useGridFilterDisplay`.
+
+```tsx
+import { useGridCellEditor, useGridFilter, type CustomCellEditorProps, type CustomFilterProps } from "@dschz/solid-ag-grid";
+
+const NameEditor = (props: CustomCellEditorProps<Row, string>) => {
+  useGridCellEditor({ isCancelAfterEnd: () => !props.value?.trim() });
+  return <input value={props.value ?? ""} onInput={(e) => props.onValueChange(e.currentTarget.value)} />;
+};
+// popup editor: call props.stopEditing() to commit; set cellEditorPopup: true on the colDef
+
+const MakeFilter = (props: CustomFilterProps<Row>) => {
+  useGridFilter({ doesFilterPass: (p) => props.model == null || p.data.make === props.model });
+  return <button onClick={() => props.onModelChange(props.model ? null : "Ford")}>Ford only</button>;
+};
+
+const columnDefs = [
+  { field: "name", editable: true, cellEditor: NameEditor },
+  { field: "make", filter: MakeFilter },
+];
+```
+
+- Async cell renderers: a renderer may read an async memo directly. Each cell gets its own
+  `<Loading>` boundary whose fallback is `colDef.loadingCellRenderer`. `agSkeletonCellRenderer`
+  is NOT in `AllCommunityModule`: provide your own `loadingCellRenderer` or register its module.
+- JS (class) renderers and editors and AG Grid's built-ins (`"agNumberCellEditor"`, ...) work as usual.
+- Classes on grid-owned rows/cells: use `rowClassRules` / `cellClassRules` / `rowClass` / `cellClass`.
+  Never mutate grid-owned DOM. The `class` prop on `<AgGridSolid>` is yours and fully reactive.
+
+## rowStore: declarative rows from a Solid store (opt in)
+
+```tsx
+import { action, createOptimisticStore, createStore } from "solid-js";
+
+const [rows, setRows] = createStore<Row[]>(initial);
+const [view, setView] = createOptimisticStore(rows);
+
+const addRow = action(function* (row: Row) {          // generator form; `yield`, not `await`
+  setView((d) => { d.push(row); });                   // paints instantly
+  const saved = (yield api.post(row)) as Row;
+  setRows((d) => { d.push(saved); });                 // confirm into the base store
+});                                                   // on failure the overlay reverts: row disappears
+
+<AgGridSolid rowStore={view} getRowId={(p) => p.data.id} columnDefs={cols} />;
+```
+
+- `rowData` = value protocol (hand it snapshots). `rowStore` = subscription protocol (hand it the
+  store and mutate the store). Never pass a store proxy to `rowData`: store mutations won't reach
+  the grid (dev warns).
+- Requires `getRowId` with stable, data-derived ids (generate on the client with
+  `crypto.randomUUID()` and persist them). Never change a row's id in place.
+- Mutually exclusive with `rowData`; one writer per grid (don't mix with `api.applyTransaction`).
+  The store identity is fixed for the grid's lifetime. Client-side row model only.
+- Adds/removes apply synchronously; field writes go through the grid's async transaction batch.
+  Pure reorders are not projected: use the grid's sorting.
+- The adapter never writes your store: a cell edit does not flow back. Handle
+  `onCellValueChanged` and write the store yourself.
+- A "saving…" indicator is a co-written `createOptimistic(false)` flag set inside the action, not
+  `isPending`. To keep failed rows, write them to the base store with a `status` field instead.
+- Server-owned lists: `createOptimisticStore(() => api.list(), [])`, then `refresh(store)` after
+  the write.
+- Keep `api.applyTransaction*` for high-frequency feeds that need your own batching, very large
+  data sets, or non-client-side row models.
+
+## SSR
+
+SSR-safe: the server renders only the shell divs; the grid boots once on the client after
+hydration. Works in SolidStart and TanStack Start without `clientOnly()`, because the package ships
+Solid source under the `solid` export condition. Importing the compiled `dist/index.js` in plain
+Node (no Solid-aware bundler) throws.
+
+## Solid 2.0 reminders that bite grid apps
+
+- `solid-js/web` → `@solidjs/web`; `onMount` → `onSettled`; `Suspense` → `Loading`;
+  `createResource` → async `createMemo`; `createEffect(compute, apply)` takes two functions.
+- Return cleanups from `onSettled`; `onCleanup` inside `onSettled` throws.
+- Don't write signals or stores from a component body, memo, or effect compute.
+- Store writes use the draft setter: `setRows((d) => { d[0].qty = 2; })`.
+
+## Names that are not part of this API
+
+`AgGridReact`, `AgGridSolid` imported from `solid-ag-grid` (old, unscoped package),
+`AgGridSolidRef.columnApi` (removed in AG Grid v31),
+`useCallback`/`useMemo`/dependency arrays for the hooks above, types imported from `ag-grid-react`,
+`gridOptions` changes after creation (not tracked), `mergeProps`/`splitProps` (Solid 1;
+use `merge`/`omit`).
+
+Docs: README.md, docs/reactivity.md, docs/row-store.md, docs/ssr.md in this package's repo
+(https://github.com/dsnchz/solid-ag-grid). AG Grid feature docs at ag-grid.com apply unchanged.

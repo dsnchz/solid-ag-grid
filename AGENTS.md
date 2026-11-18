@@ -91,6 +91,7 @@ Solid tooling installed in `node_modules`:
 - **Stage paths explicitly; never `git add -A`.** Vitest browser mode writes failure attachments to `.vitest/` (gitignored), and the history was rewritten once to remove committed attachments.
 - **Changesets** publish stable releases to `latest` (pre mode on the `next` tag ended with `36.0.0`); entries are `patch` unless a change warrants more, written for consumers. `pkg:version` syncs and formats `jsr.json`. Publishing is the maintainer's call: `NPM_CONFIG_OTP=<code> pnpm pkg:publish`, then `bunx jsr publish` (browser authorization). If pre mode is re-entered (`pnpm exec changeset pre enter next`), `pkg:publish` also points `next` at each prerelease with the same 2FA code. Check the dist-tags afterwards: npm processes a publish for a few minutes before the tarball installs.
 - **Upstream first.** Do not work around a Solid or AG Grid regression in library code. File it with a headless, signals-only (or vanilla-grid) repro, verified to reproduce, then pin it in a test.
+- **`llms.txt` stays true.** It is the agent cheatsheet shipped in the npm and JSR packages. A change to the public API, peers, pinned versions or a documented behavior updates it in the same commit.
 
 ## Local-only context
 

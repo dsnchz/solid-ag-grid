@@ -38,7 +38,8 @@
     "url": "git+https://github.com/dsnchz/solid-ag-grid.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "llms.txt"
   ],
   "type": "module",
   "sideEffects": false,
