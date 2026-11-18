@@ -1,6 +1,6 @@
 import type { Context, ICellRendererComp, UserCompDetails } from "ag-grid-community";
 import type { Accessor } from "solid-js";
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal } from "solid-js";
 
 export type JsCellRendererOptions = {
   context: Context;
@@ -20,6 +20,10 @@ export type JsCellRenderer = {
   gui: Accessor<HTMLElement | undefined>;
   /** live instance, for ICellComp.getCellRenderer */
   instance: () => ICellRendererComp | undefined;
+  /** final disposal: destroys the live renderer. The caller registers it with `onCleanup` in
+   * a component body — CellComp creates this lifecycle inside a ref callback, where Solid
+   * forbids `onCleanup` (CLEANUP_IN_FORBIDDEN_SCOPE) */
+  dispose: () => void;
 };
 
 /**
@@ -131,7 +135,5 @@ export const createJsCellRenderer = (options: JsCellRendererOptions): JsCellRend
   );
 
   // final disposal only — the update effect above deliberately keeps the comp alive
-  onCleanup(() => destroyCellRenderer(false));
-
-  return { gui, instance: () => comp };
+  return { gui, instance: () => comp, dispose: () => destroyCellRenderer(false) };
 };

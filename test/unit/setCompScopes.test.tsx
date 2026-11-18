@@ -1,7 +1,15 @@
 /* eslint-disable solid/reactivity -- these tests deliberately read/write signals outside
-   tracked scopes to characterize Solid 2.0's unowned-scope semantics */
+   tracked scopes to characterize Solid 2.0's ref-callback scope semantics */
 import { render } from "@solidjs/testing-library";
-import { createMemo, createRoot, createSignal, flush } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  flush,
+  onCleanup,
+  runWithOwner,
+} from "solid-js";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -18,9 +26,9 @@ describe("setComp scope rules (Open question 1 evidence)", () => {
     const [layoutClass, setLayoutClass] = createSignal("");
     let refFired = false;
 
-    // @solidjs/web applies refs via runWithOwner(null, ...) — unowned scope, so the
-    // REACTIVE_WRITE_IN_OWNED_SCOPE dev throw (which requires an active computation
-    // context) cannot fire.
+    // a ref callback runs like a render effect's callback (solidjs/solid#4761, rc.22+):
+    // writes are the imperative work a ref does, so REACTIVE_WRITE_IN_OWNED_SCOPE does not
+    // fire there.
     render(() => (
       <div
         ref={() => {
@@ -54,17 +62,54 @@ describe("setComp scope rules (Open question 1 evidence)", () => {
     ).toThrowError(/REACTIVE_WRITE_IN_OWNED_SCOPE/);
   });
 
-  it("unowned signal reads mid-flush return the stale committed value (why refs must not READ reactive props)", () => {
-    // Companion finding: ref callbacks run unowned, and unowned reads return the committed
-    // (pre-flush) value while tracked scopes already see the pending one. GridComp therefore
-    // captures `props.context` in the component body (tracked-creation scope) instead of
-    // reading it inside its ref callback. (Note: the write below is legal only because the
-    // test body is unowned — inside createRoot it would throw, see the previous test.)
-    const [value, setValue] = createSignal("old");
-    setValue("new");
-    // outside any computation, before flush: still the committed value
-    expect(value()).toBe("old");
+  // EMPIRICAL (CellComp's lazy JS renderer relies on it): a ref owns nothing. An effect created
+  // in the ref's own context throws, and so does onCleanup anywhere under a ref; an effect
+  // inside a root created with no ambient owner is allowed, and its disposal registered in
+  // the component body runs at unmount.
+  it("a ref callback cannot own computations or cleanups; a detached root disposed from the body can", () => {
+    const [source, setSource] = createSignal(0);
+    const seen: number[] = [];
+    const codes: string[] = [];
+    const attempt = (fn: () => void) => {
+      try {
+        fn();
+      } catch (error) {
+        codes.push(/^\[(\w+)\]/.exec((error as Error).message)?.[1] ?? String(error));
+      }
+    };
+
+    const { unmount } = render(() => {
+      let disposeRoot: (() => void) | undefined;
+      onCleanup(() => disposeRoot?.());
+      return (
+        <div
+          ref={() => {
+            attempt(() => createEffect(source, () => undefined));
+            attempt(() => onCleanup(() => undefined));
+            runWithOwner(null, () =>
+              createRoot((dispose) => {
+                disposeRoot = dispose;
+                createEffect(source, (value) => {
+                  seen.push(value);
+                });
+              }),
+            );
+          }}
+        />
+      );
+    });
     flush();
-    expect(value()).toBe("new");
+
+    expect(codes).toEqual(["PRIMITIVE_IN_EFFECT_CALLBACK", "CLEANUP_IN_FORBIDDEN_SCOPE"]);
+    expect(seen).toEqual([0]);
+    setSource(1);
+    flush();
+    expect(seen).toEqual([0, 1]);
+
+    unmount();
+    setSource(2);
+    flush();
+    // the body-registered cleanup disposed the root: the effect no longer runs
+    expect(seen).toEqual([0, 1]);
   });
 });

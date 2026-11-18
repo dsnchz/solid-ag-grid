@@ -34,11 +34,10 @@ type HeaderDropZonesComp = Component & { getFocusableContainers?: () => Focusabl
 
 const GridComp = (props: GridCompProps) => {
   // captured ONCE, in the component body: props.context is signal-backed in the parent, and
-  // ref callbacks run unowned (`runWithOwner(null)`) mid-flush, where signal reads return the
-  // stale pre-flush value. Body-time capture runs inside the creating computation, which sees
-  // the pending (new) value; `untrack` silences the dev strict-read warning. The grid never
+  // ref callbacks are untracked, so a read there would not follow it anyway. The grid never
   // swaps Context in place (the parent conditional remounts GridComp instead), so a one-shot
-  // capture matches the React wrapper's `({ context }) => ...` destructure.
+  // capture matches the React wrapper's `({ context }) => ...` destructure; `untrack` silences
+  // the dev strict-read warning.
   const context = untrack(() => props.context);
 
   const [layoutClass, setLayoutClass] = createSignal<string>("");
@@ -59,18 +58,20 @@ const GridComp = (props: GridCompProps) => {
   const onTabKeyDown = () => undefined;
 
   // SETCOMP VERDICT (ARCHITECTURE.md Open question 1): ctrl.setComp runs directly in the ref
-  // callback, exactly like the React wrapper. @solidjs/web applies refs via
-  // `runWithOwner(null, ...)`, which clears the reactive context, and the dev-mode
-  // REACTIVE_WRITE_IN_OWNED_SCOPE throw only fires while a computation context is active — so
-  // the synchronous compProxy pushes setComp makes (LayoutFeature.postConstruct →
-  // updateLayoutClasses → setLayoutClass) are legal signal writes; no `ownedWrite: true`,
-  // `queueMicrotask` or onSettled deferral needed. The element being document-DISCONNECTED at
-  // ref time (Solid refs fire before insertion) is fine here: GridCtrl.setComp only does
-  // setAttribute / listener wiring / ResizeObserver.observe, none of which require
-  // connectivity (unlike grid *creation* in agGridSolid.tsx, which stays in onSettled).
-  // COROLLARY: ref callbacks may freely WRITE signals but must not READ signal-backed props —
-  // unowned reads mid-flush return the stale committed value (see the `context` capture above).
-  // Evidence for both halves: test/unit/setCompScopes.test.tsx.
+  // callback, exactly like the React wrapper. Since Solid 2.0.0-rc.22 (solidjs/solid#4761) a
+  // ref callback runs like a render effect's first callback run: untracked, in the context of
+  // the pass that creates the element. Signal writes are allowed there, so the synchronous
+  // compProxy pushes setComp makes (LayoutFeature.postConstruct → updateLayoutClasses →
+  // setLayoutClass) are legal; no `ownedWrite: true`, `queueMicrotask` or onSettled deferral
+  // needed. The element being document-DISCONNECTED at ref time (Solid refs fire before
+  // insertion) is fine here: GridCtrl.setComp only does setAttribute / listener wiring /
+  // ResizeObserver.observe, none of which require connectivity (unlike grid *creation* in
+  // agGridSolid.tsx, which stays in onSettled).
+  // COROLLARY: a ref owns nothing. In dev, creating a memo, effect or root in the ref's
+  // context throws PRIMITIVE_IN_EFFECT_CALLBACK and any onCleanup throws
+  // CLEANUP_IN_FORBIDDEN_SCOPE, so whatever a compProxy setter sets up lazily needs an owner
+  // and cleanup prepared in the component body (see the JS renderer root in CellComp).
+  // Evidence: test/unit/setCompScopes.test.tsx.
   // setComp also needs the aria-description child, and Solid applies refs parent-first (the
   // reverse of React's commit order, where the child ref is set before the parent's), so the
   // guarded setup runs from both refs and fires once both exist (order-independent; same

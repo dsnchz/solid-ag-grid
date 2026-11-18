@@ -224,7 +224,7 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
   // directly inside onSettled, whose caught pending async prop reads linked the computation
   // (dev: PENDING_ASYNC_FORBIDDEN_SCOPE) so it RE-RAN on resolve and booted a second grid.
   // Since boot moved one microtask off onSettled's scope, no reads remain inside onSettled and
-  // nothing links it — today the guard is a defensive backstop (e.g. against future 2.0-beta
+  // nothing links it — today the guard is a defensive backstop (e.g. against future Solid 2.x
   // changes to onSettled's re-run semantics), not a fix for an active re-run path.
   let gridCreated = false;
 
@@ -304,7 +304,7 @@ export const AgGridSolidUi = <TData,>(props: InternalAgGridSolidProps<TData>): J
     gridCreated = true;
     // SSR contract: the server renders only the shell divs; the grid boots once, client-side,
     // after hydration. onSettled should already be server-inert, but the guard makes the
-    // contract explicit rather than an implicit invariant of the 2.0 beta.
+    // contract explicit rather than an implicit invariant of Solid 2.0.
     if (isServer) {
       return;
     }

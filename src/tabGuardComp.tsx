@@ -25,8 +25,8 @@ type TabGuardProps = {
 const TabGuardComp = (props: TabGuardProps) => {
   const { context } = useContext(BeansContext);
   // signal-backed prop (GridComp passes `eGridBodyParent()`) consumed inside ref callbacks,
-  // which run unowned mid-flush and would read the stale pre-flush value — capture it in the
-  // component body instead (see the setComp note in gridComp.tsx)
+  // which are untracked: capture it once in the component body instead (see the setComp note
+  // in gridComp.tsx)
   const eFocusableElement = untrack(() => props.eFocusableElement);
 
   let eTopGuard: HTMLDivElement | undefined;
@@ -47,7 +47,7 @@ const TabGuardComp = (props: TabGuardProps) => {
     }
   };
 
-  // Runs from the guard-div ref callbacks (unowned scope — see the setComp note in gridComp.tsx);
+  // Runs from the guard-div ref callbacks (see the setComp note in gridComp.tsx);
   // creates the ctrl once both guards exist. The guards need not be document-connected:
   // TabGuardCtrl only attaches listeners and sets attributes on them.
   const setupCtrl = () => {

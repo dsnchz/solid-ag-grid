@@ -1,5 +1,5 @@
 import type { Context, ICellRendererComp, UserCompDetails } from "ag-grid-community";
-import { createRoot, createSignal, flush } from "solid-js";
+import { createRoot, createSignal, flush, onCleanup } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { createJsCellRenderer } from "../../src/cells/createJsCellRenderer";
@@ -86,6 +86,8 @@ const setup = () => {
       suppress,
       onRendererDestroyed,
     });
+    // as CellComp / SkeletonCellRenderer do: the caller owns final disposal
+    onCleanup(renderer.dispose);
     return d;
   });
   flush();

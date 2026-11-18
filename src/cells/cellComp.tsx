@@ -16,8 +16,8 @@ import type { Accessor } from "solid-js";
 import {
   createEffect,
   createMemo,
+  createRoot,
   createSignal,
-  getOwner,
   Loading,
   onCleanup,
   runWithOwner,
@@ -195,36 +195,49 @@ const CellComp = (props: CellCompProps) => {
 
   // JS (non-framework) renderer instance lifecycle; its gui inserts as derived JSX in the
   // value slot below, so React's eCellValue/cellValueVersion re-run plumbing is not needed.
-  // LAZY (per-cell diet): the lifecycle effect is created under this component's owner the
-  // first time a non-framework compDetails arrives (setRenderDetails is the only writer), so a
-  // plain-value or framework-renderer cell never creates it. The insert reads `jsGui`, which
-  // exists from mount: a slot signal that receives the renderer's own gui accessor when the
-  // renderer is created (derived, no relay effect). isCellRenderer() cannot gate this at mount:
+  // LAZY (per-cell diet): the lifecycle effect is created the first time a non-framework
+  // compDetails arrives (setRenderDetails is the only writer), so a plain-value or
+  // framework-renderer cell never creates it. The insert reads `jsGui`, which exists from
+  // mount: a slot signal that receives the renderer's own gui accessor when the renderer is
+  // created (derived, no relay effect). isCellRenderer() cannot gate this at mount:
   // refreshShouldDestroy does not cover renderer changes, so a column may gain a renderer in
   // place.
-  const owner = getOwner();
+  // DETACHED ROOT: the first setRenderDetails usually arrives inside setComp, i.e. inside a
+  // ref callback. Solid 2.0 throws PRIMITIVE_IN_EFFECT_CALLBACK for a computation created
+  // there in the ref's own context (`runWithOwner(getOwner())` from the body is that same
+  // context) and CLEANUP_IN_FORBIDDEN_SCOPE for any onCleanup. Creating the lifecycle in the
+  // body instead would cost every cell a computation. So it lives in its own root, created
+  // with no ambient owner; this body's cleanup below destroys the renderer and disposes the
+  // root, the same lifetime as a child of the cell.
   const [jsGuiSource, setJsGuiSource] = createSignal<Accessor<HTMLElement | undefined>>();
   const jsGui = () => jsGuiSource()?.();
   let jsRenderer: JsCellRenderer | undefined;
+  let disposeJsRoot: (() => void) | undefined;
   const ensureJsRenderer = () => {
     if (jsRenderer || context.isDestroyed()) {
       return;
     }
-    const renderer = runWithOwner(owner, () =>
-      createJsCellRenderer({
-        context,
-        compDetails,
-        force,
-        suppress: suppressJsRenderer,
-        // a torn-down renderer's setTooltip registration must not outlive it
-        onRendererDestroyed: () => cellCtrl.resetCellRendererTooltip(),
+    const renderer = runWithOwner(null, () =>
+      createRoot((dispose) => {
+        disposeJsRoot = dispose;
+        return createJsCellRenderer({
+          context,
+          compDetails,
+          force,
+          suppress: suppressJsRenderer,
+          // a torn-down renderer's setTooltip registration must not outlive it
+          onRendererDestroyed: () => cellCtrl.resetCellRendererTooltip(),
+        });
       }),
     );
     jsRenderer = renderer;
-    // written outside runWithOwner: a write with an owner active is an owned-scope write.
     // The updater form, because a bare function argument would be read as `(prev) => next`
     setJsGuiSource(() => renderer.gui);
   };
+  onCleanup(() => {
+    jsRenderer?.dispose();
+    disposeJsRoot?.();
+  });
 
   // ctrl.setComp needs the root cell element plus (when present) the spanned wrapper and the
   // ag-cell-wrapper, whose refs are applied parent-before-children — guarded setup fires once

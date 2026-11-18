@@ -74,7 +74,7 @@ const cellText = (root: Element, rowIndex: number, colId: string) =>
 
 /** A JS (non-framework) cell renderer class with per-grid lifecycle counters. */
 const makeJsRenderer = (className: string, refreshResult: boolean) => {
-  const counters = { created: 0, refreshed: 0 };
+  const counters = { created: 0, refreshed: 0, destroyed: 0 };
   class JsRenderer implements ICellRendererComp {
     private eGui!: HTMLElement;
     init(params: ICellRendererParams) {
@@ -90,6 +90,9 @@ const makeJsRenderer = (className: string, refreshResult: boolean) => {
       counters.refreshed++;
       this.eGui.textContent = `JS-${params.value}`;
       return refreshResult;
+    }
+    destroy() {
+      counters.destroyed++;
     }
   }
   return { JsRenderer, counters };
@@ -175,6 +178,10 @@ describe("CellComp complete (browser)", () => {
 
     vanilla.destroy();
     solid.unmount();
+    // unmount destroys every live renderer instance, exactly like vanilla's grid destroy
+    expect(solidYear.counters.destroyed).toBe(6);
+    expect(solidPrice.counters).toEqual(vanillaPrice.counters);
+    expect(solidYear.counters).toEqual(vanillaYear.counters);
   });
 
   it("parity: multiRow checkbox selection renders the tool widgets like vanilla and clicking updates getSelectedRows()", async () => {

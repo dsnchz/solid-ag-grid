@@ -1,5 +1,5 @@
 import type { CellCtrl } from "ag-grid-community";
-import { Show, untrack, useContext } from "solid-js";
+import { onCleanup, Show, untrack, useContext } from "solid-js";
 
 import { BeansContext } from "../core/beansContext";
 import { createJsCellRenderer } from "./createJsCellRenderer";
@@ -31,6 +31,7 @@ export const SkeletonCellRenderer = (props: SkeletonCellRendererProps) => {
     compDetails: () => loadingComp ?? undefined,
     force: () => false,
   });
+  onCleanup(jsRenderer.dispose);
 
   const frameworkLoadingComp = loadingComp?.componentFromFramework ? loadingComp : undefined;
 

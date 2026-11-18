@@ -298,7 +298,11 @@ describe("createRowStoreAdapter bookkeeping", () => {
     dispose();
   });
 
-  it("optimistic revert projects as a plain remove (no optimistic-specific code path)", async () => {
+  // KNOWN UPSTREAM REGRESSION (solid rc.22 – 2.0.0, solidjs/solid#5007): a reader that
+  // subscribes only through $TRACK never joins the optimistic lane, so the structural compute
+  // is served the truth on apply and never re-runs on revert. Bisected to c98168082 (#4729).
+  // it.fails flips red once the fix ships: delete the marker then
+  it.fails("optimistic revert projects as a plain remove (no optimistic-specific code path)", async () => {
     const [rows] = createStore<Row[]>(initialRows());
     const [optimistic, setOptimistic] = createOptimisticStore<Row[]>(rows);
     const calls: Call[] = [];
@@ -351,12 +355,11 @@ describe("createRowStoreAdapter bookkeeping", () => {
     dispose();
   });
 
-  // KNOWN UPSTREAM REGRESSION (solid rc.14 – rc.21): one optimistic write re-runs EVERY row's
-  // deep(row) projection ([2,2,2], not [1,2,1]), so a one-row optimistic edit becomes an n-row
-  // update transaction. Bisected rc.13 → rc.14; fixed on solid `next` by c98168082 (#4729, "a
-  // guess's slot is the point of write"), unreleased at rc.21. it.fails flips red once the fix
-  // ships: delete the marker then
-  it.fails("EMPIRICAL: optimistic revert invalidates per-row (path granularity), not whole-array", async () => {
+  // Pins the fix for the solid rc.14 – rc.21 regression where one optimistic write re-ran
+  // EVERY row's deep(row) projection ([2,2,2], not [1,2,1]), turning a one-row optimistic edit
+  // into an n-row update transaction. Fixed upstream by c98168082 (#4729, "a guess's slot is
+  // the point of write"), first released in 2.0.0-rc.22.
+  it("EMPIRICAL: optimistic revert invalidates per-row (path granularity), not whole-array", async () => {
     const [rows] = createStore<Row[]>(initialRows());
     const [optimistic, setOptimistic] = createOptimisticStore<Row[]>(rows);
     const fieldRuns = [0, 0, 0];

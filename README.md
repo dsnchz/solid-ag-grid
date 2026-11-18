@@ -14,29 +14,28 @@ Every header, row, and cell in the grid is rendered by Solid — this is a deep 
 
 Because the rendering layer is Solid, your components are real Solid components living in the real reactive graph: cell renderers can read app signals and update with zero grid API calls, async data suspends into the grid's loading states, and refetches get stale-while-revalidate semantics for free.
 
-> **Status: release candidate.** Targets **AG Grid v36** and **Solid 2.0 (RC)** only. Published under the `next` dist-tag until Solid 2.0 goes stable. See [Status & roadmap](#status--roadmap).
+> **Status: release candidate.** Targets **AG Grid v36** and **Solid 2.0** only. Published under the `next` dist-tag; the stable `36.0.0` release waits on an upstream Solid fix ([solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007)). See [Status & roadmap](#status--roadmap).
 
 ## Installation
 
 ```bash
-npm install @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js@2.0.0-rc.21 @solidjs/web@2.0.0-rc.21
+npm install @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js @solidjs/web
 # or
-pnpm add @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js@2.0.0-rc.21 @solidjs/web@2.0.0-rc.21
+pnpm add @dschz/solid-ag-grid ag-grid-community@36.3.0 solid-js @solidjs/web
 ```
 
 Also available on [JSR](https://jsr.io/@dschz/solid-ag-grid) as TypeScript source (`npx jsr add @dschz/solid-ag-grid`).
 
 Peer dependencies:
 
-| Package             | Version        | Notes                                                               |
-| ------------------- | -------------- | ------------------------------------------------------------------- |
-| `ag-grid-community` | `36.3.0`       | The grid core, **exact version**. Our major tracks AG Grid's major. |
-| `solid-js`          | `^2.0.0-rc.21` | **Solid 2.0 RC or later required.** Solid 1.x is not supported.     |
-| `@solidjs/web`      | `^2.0.0-rc.21` | Same version as `solid-js`.                                         |
+| Package             | Version  | Notes                                                               |
+| ------------------- | -------- | ------------------------------------------------------------------- |
+| `ag-grid-community` | `36.3.0` | The grid core, **exact version**. Our major tracks AG Grid's major. |
+| `solid-js`          | `^2.0.0` | **Solid 2.0 required.** Solid 1.x is not supported.                 |
+| `@solidjs/web`      | `^2.0.0` | Same version as `solid-js`.                                         |
 
 Two things worth knowing:
 
-- **Solid 2.0 is API-frozen as of the RC**, so ranged versions (`^2.0.0-rc.21`) are now safe — the exact-pin discipline from the beta era is no longer required. This package is developed and tested against `2.0.0-rc.21`; we re-verify each RC deliberately.
 - **`ag-grid-community` is pinned exactly**, as `ag-grid-react` pins it. AG Grid's internals are not semver-governed — this package integrates with them as deeply as the React wrapper does, and a v36 minor (36.1) broke earlier releases at load time. Each AG Grid release is ported deliberately; install the version in the table.
 - **`ag-stack`** (AG Grid's base package) is a regular dependency of both `ag-grid-community` and this package, pinned to the same version — it installs automatically; you never interact with it.
 
@@ -251,7 +250,7 @@ The [Maintainer's Field Guide](./docs/field-guide/00-how-to-use-this-guide.md) i
 
 ## Status & roadmap
 
-- **Release candidate**, tracking the Solid 2.0 RC line. Published under the `next` dist-tag; promoted to stable when Solid 2.0 is.
+- **Release candidate**, developed and tested against `solid-js` / `@solidjs/web` 2.0.0. Published under the `next` dist-tag; `36.0.0` ships once [solidjs/solid#5007](https://github.com/solidjs/solid/issues/5007) (optimistic structural writes in `rowStore`) is fixed upstream.
 - **Versioning:** our major follows AG Grid's major — `36.x` supports AG Grid v36.
 - **Tested:** across three environments (real Chromium via Playwright, jsdom, and node SSR), with vanilla `createGrid` used as a behavioral parity oracle throughout.
 - **Shipped:** the **store → transaction adapter** (opt-in [`rowStore`](./docs/row-store.md) prop) — feed the grid a Solid store and have mutations projected into surgical transactions, with transparent optimistic-update support and O(delta) capture.
