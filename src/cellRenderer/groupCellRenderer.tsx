@@ -7,6 +7,7 @@ import type {
 } from "ag-grid-community";
 import { _toString, CssClassManager } from "ag-stack";
 import {
+  createComponent,
   createEffect,
   createMemo,
   createSignal,
@@ -158,8 +159,11 @@ const GroupCellRenderer = (props: GroupCellRendererProps) => {
     if (!details?.componentFromFramework) {
       return null;
     }
-    const UserCompClass = details.componentClass;
-    return <UserCompClass {...details.params} />;
+    // Passed as a plain object, not spread in JSX: a spread becomes a reactive merged-props proxy,
+    // and reading that proxy from the inner component's body trips STRICT_READ_UNTRACKED. This is
+    // safe because the ctrl pushes a new details object for each renderer, and this JSX re-runs for
+    // it, so each instance's params are fixed for its lifetime.
+    return createComponent(details.componentClass, details.params);
   };
 
   const showValue = createMemo(() => innerCompDetails() == null && value() != null);
